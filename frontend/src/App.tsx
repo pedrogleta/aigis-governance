@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { Send, Bot, User, Database, BarChart3, Loader2 } from 'lucide-react'
 import { cn } from './lib/utils'
+import { apiService } from './services/api'
+import type { ChatResponse } from './services/api'
 
 interface Message {
   id: string
@@ -22,6 +24,7 @@ function App() {
   ])
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -32,6 +35,22 @@ function App() {
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  useEffect(() => {
+    // Check connection status on component mount
+    checkConnection()
+  }, [])
+
+  const checkConnection = async () => {
+    setConnectionStatus('checking')
+    try {
+      const isHealthy = await apiService.getHealth()
+      const isBigQueryConnected = await apiService.checkBigQueryConnection()
+      setConnectionStatus(isHealthy && isBigQueryConnected ? 'connected' : 'disconnected')
+    } catch {
+      setConnectionStatus('disconnected')
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -48,32 +67,25 @@ function App() {
     setInputValue('')
     setIsLoading(true)
 
-    // Simulate API call to the agent
     try {
-      // TODO: Replace with actual API call to your agent system
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      const response: ChatResponse = await apiService.sendMessage(inputValue)
       
       const agentMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: 'agent',
-        content: `I've analyzed your query: "${inputValue}". Here's what I found in your BigQuery dataset...`,
+        content: response.content,
         timestamp: new Date(),
-        plots: ['sample_plot_1.png'], // Mock plot data
-        code: `# Sample analysis code
-import pandas as pd
-import matplotlib.pyplot as plt
-
-# Your data analysis here
-df = pd.read_gbq("SELECT * FROM your_dataset LIMIT 100")
-print(df.head())`
+        plots: response.plots,
+        code: response.code
       }
 
       setMessages(prev => [...prev, agentMessage])
     } catch (error) {
+      console.error('API Error:', error)
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: 'agent',
-        content: 'Sorry, I encountered an error while processing your request. Please try again.',
+        content: 'Sorry, I encountered an error while processing your request. Please check your connection and try again.',
         timestamp: new Date()
       }
       setMessages(prev => [...prev, errorMessage])
@@ -84,6 +96,32 @@ print(df.head())`
 
   const formatTimestamp = (date: Date) => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  }
+
+  const getConnectionStatusColor = () => {
+    switch (connectionStatus) {
+      case 'connected':
+        return 'bg-green-500'
+      case 'disconnected':
+        return 'bg-red-500'
+      case 'checking':
+        return 'bg-yellow-500'
+      default:
+        return 'bg-gray-500'
+    }
+  }
+
+  const getConnectionStatusText = () => {
+    switch (connectionStatus) {
+      case 'connected':
+        return 'Connected to BigQuery'
+      case 'disconnected':
+        return 'Disconnected'
+      case 'checking':
+        return 'Checking connection...'
+      default:
+        return 'Unknown status'
+    }
   }
 
   return (
@@ -100,9 +138,15 @@ print(df.head())`
           </div>
           <div className="ml-auto flex items-center space-x-2 text-sm text-gray-400">
             <div className="flex items-center space-x-1">
-              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-              <span>Connected to BigQuery</span>
+              <div className={cn("w-2 h-2 rounded-full", getConnectionStatusColor())}></div>
+              <span>{getConnectionStatusText()}</span>
             </div>
+            <button 
+              onClick={checkConnection}
+              className="text-xs text-gray-500 hover:text-gray-300 underline"
+            >
+              Refresh
+            </button>
           </div>
         </div>
       </header>
@@ -141,7 +185,7 @@ print(df.head())`
                       {formatTimestamp(message.timestamp)}
                     </span>
                   </div>
-                  <div className="text-gray-200 leading-relaxed">
+                  <div className="text-gray-200 leading-relaxed whitespace-pre-line">
                     {message.content}
                   </div>
                   
@@ -215,12 +259,12 @@ print(df.head())`
                   onChange={(e) => setInputValue(e.target.value)}
                   placeholder="Ask me anything about your BigQuery dataset... (e.g., 'Show me sales trends for Q4' or 'Create a scatter plot of revenue vs. customers')"
                   className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  disabled={isLoading}
+                  disabled={isLoading || connectionStatus !== 'connected'}
                 />
               </div>
               <button
                 type="submit"
-                disabled={!inputValue.trim() || isLoading}
+                disabled={!inputValue.trim() || isLoading || connectionStatus !== 'connected'}
                 className="bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200 flex items-center space-x-2"
               >
                 <Send className="h-4 w-4" />
@@ -228,7 +272,10 @@ print(df.head())`
               </button>
             </div>
             <div className="mt-2 text-xs text-gray-500">
-              Press Enter to send, Shift+Enter for new line
+              {connectionStatus === 'connected' 
+                ? 'Press Enter to send, Shift+Enter for new line'
+                : 'Please wait for connection to be established...'
+              }
             </div>
           </form>
         </div>

@@ -15,7 +15,7 @@ export class ApiService {
   private baseUrl: string
   private sessionId: string | null = null
 
-  constructor(baseUrl: string = 'http://localhost:8000') {
+  constructor(baseUrl: string = 'http://localhost:5000') {
     this.baseUrl = baseUrl
   }
 
