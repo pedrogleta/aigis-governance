@@ -1,0 +1,9 @@
+{
+  "app_name": "data_science",
+  "user_id": "u_123",
+  "session_id": "df5e8d39-144b-4ba8-a8e9-ee57a5b0daf8",
+  "new_message": {
+    "role": "user",
+    "parts": [{ "text": "hi, what data do you have access to?" }]
+  }
+}

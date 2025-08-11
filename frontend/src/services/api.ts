@@ -68,26 +68,44 @@ export class ApiService {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data = await response.json();
-      // Parse response (assuming a simple text reply in data, adapt as needed)
+
+      // Parse ADK API response - it returns an array of objects
       let content = '';
       let plots: string[] = [];
       let code = '';
-      if (data && data.reply) {
-        // If ADK returns a reply object
-        if (typeof data.reply === 'string') {
-          content = data.reply;
-        } else if (data.reply.parts && Array.isArray(data.reply.parts)) {
-          // If reply is in parts
-          content = data.reply.parts.map((p: any) => p.text).join('\n');
+
+      if (Array.isArray(data) && data.length > 0) {
+        // Look for the content object (usually the second one with role: "model")
+        const contentObject = data.find(
+          (item: any) =>
+            item.content &&
+            item.content.parts &&
+            Array.isArray(item.content.parts),
+        );
+
+        if (contentObject && contentObject.content.parts) {
+          // Extract text from all parts
+          content = contentObject.content.parts
+            .map((part: any) => part.text || '')
+            .filter((text: string) => text.trim())
+            .join('\n');
         }
-        if (data.reply.plots) plots = data.reply.plots;
-        if (data.reply.code) code = data.reply.code;
-      } else if (data && data.parts && Array.isArray(data.parts)) {
-        content = data.parts.map((p: any) => p.text).join('\n');
+
+        // Look for any artifacts or additional data in the response
+        // This might need to be adjusted based on actual response structure
+        if (
+          contentObject &&
+          contentObject.actions &&
+          contentObject.actions.artifactDelta
+        ) {
+          // Handle artifacts if they exist
+          console.log('Artifacts found:', contentObject.actions.artifactDelta);
+        }
       } else if (typeof data === 'string') {
         content = data;
       } else {
-        content = JSON.stringify(data);
+        content = 'No response content found';
+        console.warn('Unexpected response format:', data);
       }
       return {
         content,
