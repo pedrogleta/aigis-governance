@@ -7,7 +7,6 @@ export interface ChatRequest {
 export interface ChatResponse {
   content: string;
   plots?: string[];
-  code?: string;
   sessionId: string;
   error?: string;
 }
@@ -72,7 +71,6 @@ export class ApiService {
       // Parse ADK API response - it returns an array of objects
       let content = '';
       let plots: string[] = [];
-      let code = '';
 
       if (Array.isArray(data) && data.length > 0) {
         // Look for the content object (usually the second one with role: "model")
@@ -110,7 +108,6 @@ export class ApiService {
       return {
         content,
         plots,
-        code,
         sessionId: sessionId,
       };
     } catch (error: any) {
@@ -118,7 +115,6 @@ export class ApiService {
       return {
         content: '',
         plots: [],
-        code: '',
         sessionId: this.sessionId || '',
         error: error.message || 'Unknown error',
       };

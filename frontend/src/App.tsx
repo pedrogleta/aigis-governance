@@ -3,6 +3,8 @@ import { Send, Bot, User, Database, BarChart3, Loader2 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { apiService } from './services/api';
 import type { ChatResponse } from './services/api';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface Message {
   id: string;
@@ -10,7 +12,6 @@ interface Message {
   content: string;
   timestamp: Date;
   plots?: string[];
-  code?: string;
 }
 
 function App() {
@@ -82,7 +83,6 @@ function App() {
         content: response.content,
         timestamp: new Date(),
         plots: response.plots,
-        code: response.code,
       };
 
       setMessages((prev) => [...prev, agentMessage]);
@@ -201,18 +201,68 @@ function App() {
                       {formatTimestamp(message.timestamp)}
                     </span>
                   </div>
-                  <div className="text-gray-200 leading-relaxed whitespace-pre-line">
-                    {message.content}
+                  <div className="text-gray-200 leading-relaxed prose prose-invert prose-green max-w-none">
+                    <ReactMarkdown 
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        // Custom styling for code blocks
+                        code: ({ className, children, ...props }: any) => {
+                          const match = /language-(\w+)/.exec(className || '');
+                          const isInline = !match;
+                          return !isInline ? (
+                            <pre className="bg-gray-800 rounded-lg p-4 border border-gray-700 overflow-x-auto">
+                              <code className={className} {...props}>
+                                {children}
+                              </code>
+                            </pre>
+                          ) : (
+                            <code className="bg-gray-800 px-1 py-0.5 rounded text-green-300 text-sm" {...props}>
+                              {children}
+                            </code>
+                          );
+                        },
+                        // Custom styling for tables
+                        table: ({ children }) => (
+                          <div className="overflow-x-auto">
+                            <table className="min-w-full border-collapse border border-gray-700">
+                              {children}
+                            </table>
+                          </div>
+                        ),
+                        th: ({ children }) => (
+                          <th className="border border-gray-700 px-3 py-2 text-left bg-gray-800 text-green-400 font-medium">
+                            {children}
+                          </th>
+                        ),
+                        td: ({ children }) => (
+                          <td className="border border-gray-700 px-3 py-2 text-left">
+                            {children}
+                          </td>
+                        ),
+                        // Custom styling for lists
+                        ul: ({ children }) => (
+                          <ul className="list-disc list-inside space-y-1">
+                            {children}
+                          </ul>
+                        ),
+                        ol: ({ children }) => (
+                          <ol className="list-decimal list-inside space-y-1">
+                            {children}
+                          </ol>
+                        ),
+                        // Custom styling for blockquotes
+                        blockquote: ({ children }) => (
+                          <blockquote className="border-l-4 border-green-500 pl-4 italic text-gray-300 bg-gray-800 py-2 rounded-r">
+                            {children}
+                          </blockquote>
+                        ),
+                      }}
+                    >
+                      {message.content}
+                    </ReactMarkdown>
                   </div>
 
-                  {/* Code Block */}
-                  {message.code && (
-                    <div className="mt-3">
-                      <div className="code-block">
-                        <pre className="text-green-300">{message.code}</pre>
-                      </div>
-                    </div>
-                  )}
+
 
                   {/* Plots */}
                   {message.plots && message.plots.length > 0 && (
