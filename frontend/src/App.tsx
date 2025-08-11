@@ -1,16 +1,16 @@
-import { useState, useRef, useEffect } from 'react'
-import { Send, Bot, User, Database, BarChart3, Loader2 } from 'lucide-react'
-import { cn } from './lib/utils'
-import { apiService } from './services/api'
-import type { ChatResponse } from './services/api'
+import { useState, useRef, useEffect } from 'react';
+import { Send, Bot, User, Database, BarChart3, Loader2 } from 'lucide-react';
+import { cn } from './lib/utils';
+import { apiService } from './services/api';
+import type { ChatResponse } from './services/api';
 
 interface Message {
-  id: string
-  type: 'user' | 'agent'
-  content: string
-  timestamp: Date
-  plots?: string[]
-  code?: string
+  id: string;
+  type: 'user' | 'agent';
+  content: string;
+  timestamp: Date;
+  plots?: string[];
+  code?: string;
 }
 
 function App() {
@@ -18,111 +18,118 @@ function App() {
     {
       id: '1',
       type: 'agent',
-      content: 'Hello! I\'m your AI Data Science Assistant. I can help you analyze BigQuery datasets and create visualizations. What would you like to know about your data?',
-      timestamp: new Date()
-    }
-  ])
-  const [inputValue, setInputValue] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking')
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+      content:
+        "Hello! I'm your AI Data Science Assistant. I can help you analyze BigQuery datasets and create visualizations. What would you like to know about your data?",
+      timestamp: new Date(),
+    },
+  ]);
+  const [inputValue, setInputValue] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<
+    'connected' | 'disconnected' | 'checking'
+  >('checking');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   useEffect(() => {
-    scrollToBottom()
-  }, [messages])
+    scrollToBottom();
+  }, [messages]);
 
   useEffect(() => {
     // Check connection status on component mount
-    checkConnection()
-  }, [])
+    checkConnection();
+  }, []);
 
   const checkConnection = async () => {
-    setConnectionStatus('checking')
+    setConnectionStatus('checking');
     try {
-      const isHealthy = await apiService.getHealth()
-      const isBigQueryConnected = await apiService.checkBigQueryConnection()
-      setConnectionStatus(isHealthy && isBigQueryConnected ? 'connected' : 'disconnected')
+      const isHealthy = await apiService.getHealth();
+      const isBigQueryConnected = await apiService.checkBigQueryConnection();
+
+      setConnectionStatus(
+        isHealthy && isBigQueryConnected ? 'connected' : 'disconnected',
+      );
     } catch {
-      setConnectionStatus('disconnected')
+      setConnectionStatus('disconnected');
     }
-  }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!inputValue.trim() || isLoading) return
+    e.preventDefault();
+    if (!inputValue.trim() || isLoading) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
       type: 'user',
       content: inputValue,
-      timestamp: new Date()
-    }
+      timestamp: new Date(),
+    };
 
-    setMessages(prev => [...prev, userMessage])
-    setInputValue('')
-    setIsLoading(true)
+    setMessages((prev) => [...prev, userMessage]);
+    setInputValue('');
+    setIsLoading(true);
 
     try {
-      const response: ChatResponse = await apiService.sendMessage(inputValue)
-      
+      const response: ChatResponse = await apiService.sendMessage(inputValue);
+
       const agentMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: 'agent',
         content: response.content,
         timestamp: new Date(),
         plots: response.plots,
-        code: response.code
-      }
+        code: response.code,
+      };
 
-      setMessages(prev => [...prev, agentMessage])
+      setMessages((prev) => [...prev, agentMessage]);
     } catch (error) {
-      console.error('API Error:', error)
+      console.error('API Error:', error);
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: 'agent',
-        content: 'Sorry, I encountered an error while processing your request. Please check your connection and try again.',
-        timestamp: new Date()
-      }
-      setMessages(prev => [...prev, errorMessage])
+        content:
+          'Sorry, I encountered an error while processing your request. Please check your connection and try again.',
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const formatTimestamp = (date: Date) => {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  }
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
 
   const getConnectionStatusColor = () => {
     switch (connectionStatus) {
       case 'connected':
-        return 'bg-green-500'
+        return 'bg-green-500';
       case 'disconnected':
-        return 'bg-red-500'
+        return 'bg-red-500';
       case 'checking':
-        return 'bg-yellow-500'
+        return 'bg-yellow-500';
       default:
-        return 'bg-gray-500'
+        return 'bg-gray-500';
     }
-  }
+  };
 
   const getConnectionStatusText = () => {
     switch (connectionStatus) {
       case 'connected':
-        return 'Connected to BigQuery'
+        return 'Connected to BigQuery';
       case 'disconnected':
-        return 'Disconnected'
+        return 'Disconnected';
       case 'checking':
-        return 'Checking connection...'
+        return 'Checking connection...';
       default:
-        return 'Unknown status'
+        return 'Unknown status';
     }
-  }
+  };
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
@@ -138,10 +145,15 @@ function App() {
           </div>
           <div className="ml-auto flex items-center space-x-2 text-sm text-gray-400">
             <div className="flex items-center space-x-1">
-              <div className={cn("w-2 h-2 rounded-full", getConnectionStatusColor())}></div>
+              <div
+                className={cn(
+                  'w-2 h-2 rounded-full',
+                  getConnectionStatusColor(),
+                )}
+              ></div>
               <span>{getConnectionStatusText()}</span>
             </div>
-            <button 
+            <button
               onClick={checkConnection}
               className="text-xs text-gray-500 hover:text-gray-300 underline"
             >
@@ -160,16 +172,20 @@ function App() {
               key={message.id}
               className={cn(
                 'chat-message',
-                message.type === 'user' ? 'user-message ml-12' : 'agent-message mr-12'
+                message.type === 'user'
+                  ? 'user-message ml-12'
+                  : 'agent-message mr-12',
               )}
             >
               <div className="flex items-start space-x-3">
-                <div className={cn(
-                  'p-2 rounded-full',
-                  message.type === 'user' 
-                    ? 'bg-green-600 text-white' 
-                    : 'bg-gray-700 text-green-400'
-                )}>
+                <div
+                  className={cn(
+                    'p-2 rounded-full',
+                    message.type === 'user'
+                      ? 'bg-green-600 text-white'
+                      : 'bg-gray-700 text-green-400',
+                  )}
+                >
                   {message.type === 'user' ? (
                     <User className="h-4 w-4" />
                   ) : (
@@ -188,7 +204,7 @@ function App() {
                   <div className="text-gray-200 leading-relaxed whitespace-pre-line">
                     {message.content}
                   </div>
-                  
+
                   {/* Code Block */}
                   {message.code && (
                     <div className="mt-3">
@@ -197,20 +213,27 @@ function App() {
                       </div>
                     </div>
                   )}
-                  
+
                   {/* Plots */}
                   {message.plots && message.plots.length > 0 && (
                     <div className="mt-3">
                       <div className="plot-container">
                         <div className="flex items-center space-x-2 mb-2">
                           <BarChart3 className="h-4 w-4 text-green-400" />
-                          <span className="text-sm font-medium text-green-400">Generated Plots</span>
+                          <span className="text-sm font-medium text-green-400">
+                            Generated Plots
+                          </span>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {message.plots.map((_, index) => (
-                            <div key={index} className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                            <div
+                              key={index}
+                              className="bg-gray-800 rounded-lg p-4 border border-gray-700"
+                            >
                               <div className="aspect-video bg-gray-700 rounded flex items-center justify-center">
-                                <span className="text-gray-500 text-sm">Plot {index + 1}</span>
+                                <span className="text-gray-500 text-sm">
+                                  Plot {index + 1}
+                                </span>
                               </div>
                             </div>
                           ))}
@@ -222,7 +245,7 @@ function App() {
               </div>
             </div>
           ))}
-          
+
           {/* Loading indicator */}
           {isLoading && (
             <div className="agent-message mr-12">
@@ -243,7 +266,7 @@ function App() {
               </div>
             </div>
           )}
-          
+
           <div ref={messagesEndRef} />
         </div>
 
@@ -264,7 +287,11 @@ function App() {
               </div>
               <button
                 type="submit"
-                disabled={!inputValue.trim() || isLoading || connectionStatus !== 'connected'}
+                disabled={
+                  !inputValue.trim() ||
+                  isLoading ||
+                  connectionStatus !== 'connected'
+                }
                 className="bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200 flex items-center space-x-2"
               >
                 <Send className="h-4 w-4" />
@@ -272,16 +299,15 @@ function App() {
               </button>
             </div>
             <div className="mt-2 text-xs text-gray-500">
-              {connectionStatus === 'connected' 
+              {connectionStatus === 'connected'
                 ? 'Press Enter to send, Shift+Enter for new line'
-                : 'Please wait for connection to be established...'
-              }
+                : 'Please wait for connection to be established...'}
             </div>
           </form>
         </div>
       </main>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;

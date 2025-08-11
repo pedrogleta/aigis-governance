@@ -61,22 +61,7 @@ Before running the project, make sure you are authenticated with Google Cloud an
 
 3. **Open your browser** and navigate to `http://localhost:5173`
 
-### Option 2: Development/Testing Mode
 
-1. **Start the mock backend** (for testing without full AI setup):
-   ```
-   pip install -r requirements.txt
-   python backend_example.py
-   ```
-
-2. **Start the React frontend** (in a new terminal):
-   ```
-   cd frontend
-   npm install
-   npm run dev
-   ```
-
-3. **Open your browser** and navigate to `http://localhost:5173`
 
 ## Frontend Development
 
@@ -109,24 +94,19 @@ The Python backend includes:
 ### Backend Commands
 
 ```bash
-# For production AI system
-uv venv
-uv sync
-source .venv/bin/activate
-adk web
-
-# For development/testing
-pip install -r requirements.txt
-python backend_example.py
+# Start the ADK API server
+cd backend
+./start_server.sh
 ```
 
 ## API Endpoints
 
-The system provides the following API endpoints:
+The system provides the following ADK API endpoints:
 
-- `GET /health` - Health check
-- `GET /api/health/bigquery` - BigQuery connection status
-- `POST /api/chat` - Send chat messages and receive AI responses
+- `POST /run` - Send chat messages and run AI agents
+- `GET /list-apps` - List available applications
+- `POST /apps/{app_name}/users/{user_id}/sessions` - Create sessions
+- `GET /apps/{app_name}/users/{user_id}/sessions/{session_id}` - Get session
 
 ## Configuration
 

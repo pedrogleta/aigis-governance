@@ -26,11 +26,11 @@ if ! command -v adk &> /dev/null; then
 fi
 
 echo "✅ Starting ADK API server..."
-echo "🌐 The server will be OpenAI API compatible"
+echo "🌐 The server will provide ADK API endpoints"
 echo "📱 Frontend should connect to: http://localhost:8000"
 echo ""
 echo "Press Ctrl+C to stop the server"
 echo ""
 
 # Start the ADK API server
-adk api_server
+adk api_server --allow_origins="*"

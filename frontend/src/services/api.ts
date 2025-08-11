@@ -1,6 +1,7 @@
+// ADK API Service for chat and session management
+
 export interface ChatRequest {
   message: string;
-  sessionId?: string;
 }
 
 export interface ChatResponse {
@@ -13,82 +14,103 @@ export interface ChatResponse {
 
 export class ApiService {
   private baseUrl: string;
-  private sessionId: string | null = null;
+  private appName: string;
+  private userId: string;
+  private sessionId: string = '';
 
-  constructor(baseUrl: string = 'http://localhost:8000') {
+  constructor(
+    baseUrl: string = 'http://localhost:8000',
+    appName = 'data_science',
+    userId = 'u_123',
+  ) {
     this.baseUrl = baseUrl;
+    this.appName = appName;
+    this.userId = userId;
   }
 
+  // Create a new session if one does not exist
+  async ensureSession(): Promise<string> {
+    if (this.sessionId) return this.sessionId;
+    // Create session
+    const response = await fetch(
+      `${this.baseUrl}/apps/${this.appName}/users/${this.userId}/sessions`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      },
+    );
+    if (!response.ok) throw new Error('Failed to create session');
+    const data = await response.json();
+    this.sessionId = data.session_id || data.sessionId || data.id;
+    return this.sessionId;
+  }
+
+  // Send a chat message to the ADK agent
   async sendMessage(message: string): Promise<ChatResponse> {
     try {
-      // Use OpenAI-compatible chat completions endpoint
-      const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      const sessionId = await this.ensureSession();
+      const payload = {
+        app_name: this.appName,
+        user_id: this.userId,
+        session_id: sessionId,
+        new_message: {
+          role: 'user',
+          parts: [{ text: message }],
         },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo', // This will be handled by the ADK server
-          messages: [
-            {
-              role: 'user',
-              content: message,
-            },
-          ],
-          stream: false,
-          sessionId: this.sessionId,
-        }),
+      };
+      const response = await fetch(`${this.baseUrl}/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
-
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-
       const data = await response.json();
-
-      // Extract content from OpenAI-compatible response
-      const content =
-        data.choices?.[0]?.message?.content || 'No response received';
-
-      // Try to extract additional data from the response
+      // Parse response (assuming a simple text reply in data, adapt as needed)
+      let content = '';
       let plots: string[] = [];
-      let code: string = '';
-
-      // Check if there's additional metadata in the response
-      if (data.choices?.[0]?.message?.function_call) {
-        try {
-          const functionCall = data.choices[0].message.function_call;
-          if (functionCall.arguments) {
-            const args = JSON.parse(functionCall.arguments);
-            plots = args.plots || [];
-            code = args.code || '';
-          }
-        } catch (e) {
-          console.warn('Could not parse function call arguments:', e);
+      let code = '';
+      if (data && data.reply) {
+        // If ADK returns a reply object
+        if (typeof data.reply === 'string') {
+          content = data.reply;
+        } else if (data.reply.parts && Array.isArray(data.reply.parts)) {
+          // If reply is in parts
+          content = data.reply.parts.map((p: any) => p.text).join('\n');
         }
+        if (data.reply.plots) plots = data.reply.plots;
+        if (data.reply.code) code = data.reply.code;
+      } else if (data && data.parts && Array.isArray(data.parts)) {
+        content = data.parts.map((p: any) => p.text).join('\n');
+      } else if (typeof data === 'string') {
+        content = data;
+      } else {
+        content = JSON.stringify(data);
       }
-
-      // Store session ID if provided
-      if (data.sessionId) {
-        this.sessionId = data.sessionId;
-      }
-
       return {
         content,
         plots,
         code,
-        sessionId: this.sessionId || 'default-session',
+        sessionId: sessionId,
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('API Error:', error);
-      throw error;
+      return {
+        content: '',
+        plots: [],
+        code: '',
+        sessionId: this.sessionId || '',
+        error: error.message || 'Unknown error',
+      };
     }
   }
 
   async getHealth(): Promise<boolean> {
     try {
-      // Check if OpenAI-compatible endpoint is available
-      const response = await fetch(`${this.baseUrl}/v1/models`);
+      // Check if endpoint is available
+      const response = await fetch(`${this.baseUrl}/list-apps`);
       return response.ok;
     } catch {
       return false;
@@ -98,13 +120,10 @@ export class ApiService {
   // Method to check if BigQuery connection is available
   async checkBigQueryConnection(): Promise<boolean> {
     try {
-      // Try the original endpoint first
-      const response = await fetch(`${this.baseUrl}/api/health/bigquery`);
-      if (response.ok) return true;
+      // Check if we can reach the ADK server by trying to list apps
+      const response = await fetch(`${this.baseUrl}/list-apps`);
 
-      // Fallback: if we can reach the server, assume BigQuery is available
-      const modelsResponse = await fetch(`${this.baseUrl}/v1/models`);
-      return modelsResponse.ok;
+      return response.ok;
     } catch {
       return false;
     }

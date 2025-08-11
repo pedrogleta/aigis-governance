@@ -36,7 +36,7 @@ This file summarizes the most important endpoints and payloads for the Google AD
   - **Payload Example:**
     ```json
     {
-      "app_name": "my_sample_agent",
+      "app_name": "data_science",
       "user_id": "u_123",
       "session_id": "s_abc",
       "new_message": {

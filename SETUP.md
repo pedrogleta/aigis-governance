@@ -30,21 +30,24 @@ The frontend will automatically connect to `http://localhost:8000`.
 ## What Changed
 
 ### Frontend Updates
-- **API Service**: Updated to use OpenAI-compatible endpoints (`/v1/chat/completions`)
+- **API Service**: Updated to use ADK API endpoints (`/run`, `/list-apps`, etc.)
 - **Port Configuration**: Set to connect to port 8000 (ADK server)
-- **Response Handling**: Updated to parse OpenAI-compatible responses
+- **Response Handling**: Updated to parse ADK API responses
+- **Session Management**: Automatic session creation and management
 
 ### Backend Integration
 - **ADK Framework**: Uses Google's ADK for AI agents
-- **OpenAI Compatibility**: Server exposes standard OpenAI API endpoints
+- **Custom API**: Server exposes ADK-specific endpoints for chat and session management
 - **Port 8000**: Server runs on the configured port
 
 ## API Endpoints
 
-The ADK server provides these OpenAI-compatible endpoints:
+The ADK server provides these endpoints:
 
-- `POST /v1/chat/completions` - Main chat endpoint
-- `GET /v1/models` - Available models
+- `POST /run` - Main chat endpoint for running agents
+- `GET /list-apps` - List available applications
+- `POST /apps/{app_name}/users/{user_id}/sessions` - Create sessions
+- `GET /apps/{app_name}/users/{user_id}/sessions/{session_id}` - Get session
 
 ## Troubleshooting
 
@@ -65,15 +68,7 @@ The ADK server provides these OpenAI-compatible endpoints:
 
 ## Development
 
-### Using Mock Backend (Alternative)
-If you want to test without the full ADK setup:
 
-```bash
-cd backend
-python backend_example.py
-```
-
-This runs a mock server on port 5000 (update frontend config if needed).
 
 ### Environment Variables
 Create a `.env` file in the frontend directory:
@@ -88,9 +83,9 @@ VITE_DEV_MODE=true
 ```
 Frontend (React) ←→ ADK API Server (Port 8000) ←→ AI Agents
      ↓                    ↓                        ↓
-  Chat UI           OpenAI Compatible         BigQuery Tools
-  Visualizations    API Endpoints            Data Analysis
-  Code Display      Session Management       Plot Generation
+  Chat UI           ADK API Endpoints        BigQuery Tools
+  Visualizations    Session Management       Data Analysis
+  Code Display      Agent Execution          Plot Generation
 ```
 
 The system now provides a seamless integration between your React frontend and the powerful Google ADK AI agent framework.
