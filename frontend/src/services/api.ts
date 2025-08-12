@@ -97,7 +97,6 @@ export class ApiService {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
-      let finalContent = '';
       let plots: string[] = [];
 
       try {
@@ -123,16 +122,25 @@ export class ApiService {
                     .filter((text: string) => text.trim())
                     .join('');
 
-                  finalContent += textContent;
-
                   // Check if this is a partial response
                   const isPartial = data.partial === true;
 
-                  onChunk({
-                    content: textContent,
-                    partial: isPartial,
-                    sessionId: sessionId,
-                  });
+                  if (isPartial) {
+                    // Only call onChunk for partial responses to avoid duplication
+                    onChunk({
+                      content: textContent,
+                      partial: true,
+                      sessionId: sessionId,
+                    });
+                  } else {
+                    // This is the final response without "partial", so call onComplete
+                    onComplete({
+                      content: textContent,
+                      plots,
+                      sessionId: sessionId,
+                    });
+                    return; // Exit early since we got the final response
+                  }
                 }
 
                 // Handle artifacts if they exist
@@ -149,12 +157,7 @@ export class ApiService {
         reader.releaseLock();
       }
 
-      // Call onComplete with the final response
-      onComplete({
-        content: finalContent,
-        plots,
-        sessionId: sessionId,
-      });
+      // onComplete is now called when we receive the final response without "partial"
     } catch (error: any) {
       console.error('SSE API Error:', error);
       if (error.name === 'AbortError') {
