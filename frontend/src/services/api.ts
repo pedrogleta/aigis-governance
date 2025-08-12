@@ -2,11 +2,19 @@
 
 export interface ChatRequest {
   message: string;
+  streaming?: boolean;
 }
 
 export interface ChatResponse {
   content: string;
   plots?: string[];
+  sessionId: string;
+  error?: string;
+}
+
+export interface StreamingChatResponse {
+  content: string;
+  partial: boolean;
   sessionId: string;
   error?: string;
 }
@@ -45,7 +53,119 @@ export class ApiService {
     return this.sessionId;
   }
 
-  // Send a chat message to the ADK agent
+  // Send a chat message to the ADK agent with streaming support
+  async sendMessageStreaming(
+    message: string,
+    onChunk: (chunk: StreamingChatResponse) => void,
+    onComplete: (finalResponse: ChatResponse) => void,
+    onError: (error: string) => void,
+  ): Promise<void> {
+    try {
+      const sessionId = await this.ensureSession();
+      const payload = {
+        app_name: this.appName,
+        user_id: this.userId,
+        session_id: sessionId,
+        new_message: {
+          role: 'user',
+          parts: [{ text: message }],
+        },
+        streaming: true,
+      };
+
+      // Add timeout to the fetch request
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+      const response = await fetch(`${this.baseUrl}/run_sse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      if (!response.body) {
+        throw new Error('Response body is null');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let finalContent = '';
+      let plots: string[] = [];
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+
+          // Keep the last incomplete line in the buffer
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+
+                if (data.content && data.content.parts) {
+                  const textContent = data.content.parts
+                    .map((part: any) => part.text || '')
+                    .filter((text: string) => text.trim())
+                    .join('');
+
+                  finalContent += textContent;
+
+                  // Check if this is a partial response
+                  const isPartial = data.partial === true;
+
+                  onChunk({
+                    content: textContent,
+                    partial: isPartial,
+                    sessionId: sessionId,
+                  });
+                }
+
+                // Handle artifacts if they exist
+                if (data.actions && data.actions.artifactDelta) {
+                  console.log('Artifacts found:', data.actions.artifactDelta);
+                }
+              } catch (parseError) {
+                console.warn('Failed to parse SSE data:', line, parseError);
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+
+      // Call onComplete with the final response
+      onComplete({
+        content: finalContent,
+        plots,
+        sessionId: sessionId,
+      });
+    } catch (error: any) {
+      console.error('SSE API Error:', error);
+      if (error.name === 'AbortError') {
+        onError('Request timed out. Please try again.');
+      } else {
+        onError(error.message || 'Unknown error');
+      }
+    }
+  }
+
+  // Send a chat message to the ADK agent (non-streaming)
   async sendMessage(message: string): Promise<ChatResponse> {
     try {
       const sessionId = await this.ensureSession();
