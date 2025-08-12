@@ -376,7 +376,7 @@ function App() {
       {/* Main Chat Area */}
       <main className="flex-1 flex flex-col max-w-6xl mx-auto w-full">
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 pb-32 space-y-4">
           {messages.map((message) => (
             <div
               key={message.id}
@@ -598,7 +598,7 @@ function App() {
         </div>
 
         {/* Input Form */}
-        <div className="border-t border-gray-800 p-4">
+        <div className="fixed bottom-0 left-0 right-0 bg-gray-950 border-t border-gray-800 p-4 z-10">
           <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
             <div className="flex space-x-3">
               <div className="flex-1 relative">
