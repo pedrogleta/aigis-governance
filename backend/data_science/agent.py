@@ -27,6 +27,8 @@ from google.adk.agents import Agent
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.tools import load_artifacts
 
+from opik.integrations.adk import OpikTracer, track_adk_agent_recursive
+
 from typing import cast
 
 from .sub_agents.bigquery.tools import (
@@ -34,6 +36,8 @@ from .sub_agents.bigquery.tools import (
 )
 from .prompts import return_instructions_root
 from .tools import call_db_agent, call_ds_agent
+
+opik_tracer = OpikTracer()
 
 date_today = date.today()
 
@@ -82,3 +86,5 @@ root_agent = Agent(
     before_agent_callback=setup_before_agent_call,
     generate_content_config=types.GenerateContentConfig(temperature=0.01),
 )
+
+track_adk_agent_recursive(root_agent, opik_tracer)
