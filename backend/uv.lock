@@ -28,6 +28,7 @@ dependencies = [
     { name = "google-cloud-aiplatform", extra = ["adk", "agent-engines"] },
     { name = "google-cloud-bigquery" },
     { name = "immutabledict" },
+    { name = "llm-sandbox", extra = ["docker"] },
     { name = "numpy" },
     { name = "opik" },
     { name = "pandas" },
@@ -49,6 +50,7 @@ requires-dist = [
     { name = "google-cloud-aiplatform", extras = ["adk", "agent-engines"], specifier = ">=1.93.0" },
     { name = "google-cloud-bigquery", specifier = ">=3.34.0" },
     { name = "immutabledict", specifier = ">=4.2.1" },
+    { name = "llm-sandbox", extras = ["docker"], specifier = ">=0.3.17" },
     { name = "numpy", specifier = ">=2.3.1" },
     { name = "opik", specifier = ">=1.8.23" },
     { name = "pandas", specifier = ">=2.3.0" },
@@ -389,6 +391,20 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/fc/f8/98eea607f65de6527f8a2e8885fc8015d3e6f5775df186e443e0964a11c3/distro-1.9.0.tar.gz", hash = "sha256:2fa77c6fd8940f116ee1d6b94a2f90b13b5ea8d019b98bc8bafdcabcdd9bdbed", size = 60722, upload-time = "2023-12-24T09:54:32.31Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/12/b3/231ffd4ab1fc9d679809f356cebee130ac7daa00d6d6f3206dd4fd137e9e/distro-1.9.0-py3-none-any.whl", hash = "sha256:7bffd925d65168f85027d8da9af6bddab658135b840670a223589bc0c8ef02b2", size = 20277, upload-time = "2023-12-24T09:54:30.421Z" },
+]
+
+[[package]]
+name = "docker"
+version = "7.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pywin32", marker = "sys_platform == 'win32'" },
+    { name = "requests" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/91/9b/4a2ea29aeba62471211598dac5d96825bb49348fa07e906ea930394a83ce/docker-7.1.0.tar.gz", hash = "sha256:ad8c70e6e3f8926cb8a92619b832b4ea5299e2831c14284663184e200546fa6c", size = 117834, upload-time = "2024-05-23T11:13:57.216Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e3/26/57c6fb270950d476074c087527a558ccb6f4436657314bfb6cdf484114c4/docker-7.1.0-py3-none-any.whl", hash = "sha256:c96b93b7f0a746f9e77d325bcfb87422a3d8bd4f03136ae8a85b37f1898d5fc0", size = 147774, upload-time = "2024-05-23T11:13:55.01Z" },
 ]
 
 [[package]]
@@ -1234,6 +1250,23 @@ dependencies = [
     { name = "tokenizers" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/8b/03/2a89d9280f595fe293c64adcc3bfbefe7a3677ec0210d293bfac63ae17dc/litellm-1.74.15.post2.tar.gz", hash = "sha256:8eddb1c8a6a5a7048f8ba16e652aba23d6ca996dd87cb853c874ba375aa32479", size = 9713752, upload-time = "2025-08-09T16:28:14.893Z" }
+
+[[package]]
+name = "llm-sandbox"
+version = "0.3.17"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/26/8f/4c214fbe2cef8a42ade4f07d0c1395588b450f1a9ebb76c041143dc4f93e/llm_sandbox-0.3.17.tar.gz", hash = "sha256:7cd077ed5e725add867fb982dc001132837d4902d33fa89713e4eab6f350c5dd", size = 471097, upload-time = "2025-07-17T15:41:38.263Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c1/5a/c6e52723a0d11548951885246d51b14c488ad69b48b6ff79aaa0b1cb6db4/llm_sandbox-0.3.17-py3-none-any.whl", hash = "sha256:615fe2da9b377b26a43f613df84d1053c1da26cfb42cef5f4422c205760af02d", size = 66035, upload-time = "2025-07-17T15:41:36.959Z" },
+]
+
+[package.optional-dependencies]
+docker = [
+    { name = "docker" },
+]
 
 [[package]]
 name = "markdown-it-py"
