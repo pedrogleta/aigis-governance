@@ -1,4 +1,5 @@
 // ADK API Service for chat and session management
+import { z } from 'zod';
 
 export interface ChatRequest {
   message: string;
@@ -18,6 +19,17 @@ export interface StreamingChatResponse {
   sessionId: string;
   error?: string;
 }
+
+const CreateSessionResponseSchema = z.object({
+  id: z.uuid(),
+  appName: z.string(),
+  userId: z.string(),
+  state: z.record(z.string(), z.unknown()),
+  events: z.array(z.unknown()),
+  lastUpdateTime: z.number(),
+});
+
+type CreateSessionResponse = z.infer<typeof CreateSessionResponseSchema>;
 
 export class ApiService {
   private baseUrl: string;
@@ -49,8 +61,14 @@ export class ApiService {
     );
     if (!response.ok) throw new Error('Failed to create session');
     const data = await response.json();
-    this.sessionId = data.session_id || data.sessionId || data.id;
-    return this.sessionId;
+
+    try {
+      const createSessionResponse = CreateSessionResponseSchema.parse(data);
+      return createSessionResponse.id;
+    } catch (error) {
+      console.error('API response did not match expected schema:', error);
+      throw new Error('Invalid data received from server');
+    }
   }
 
   // Send a chat message to the ADK agent with streaming support
