@@ -1,5 +1,4 @@
 # Todo
 
-- Try to fix image base64 not rendering on adk backend
-    - Maybe test other AtrifactStorages like GCP Storage
-    - Worse case scenario migrate to langchain + e2b
+- Get a better, simpler sample dataset
+- Fix assistant breaking and stopping responses in frontend when there are tool calls
