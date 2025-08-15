@@ -273,11 +273,13 @@ export class ApiService {
                           timestamp,
                         };
                         onChunk(textMessage);
-                      }
 
-                      // Always accumulate text content for final response
-                      finalTextContent += part.text;
-                      console.log('Accumulated final text:', finalTextContent);
+                        finalTextContent += part.text;
+                        console.log(
+                          'Accumulated final text:',
+                          finalTextContent,
+                        );
+                      }
                     } else if ('functionCall' in part) {
                       console.log(
                         'Processing function call:',
