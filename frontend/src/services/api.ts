@@ -256,6 +256,12 @@ export class ApiService {
                   // Process each part
                   for (const part of validatedData.content.parts) {
                     if ('text' in part && part.text) {
+                      console.log(
+                        'Processing text part:',
+                        part.text,
+                        'partial:',
+                        isPartial,
+                      );
                       const textMessage: TextMessage = {
                         type: 'text',
                         content: part.text,
@@ -264,10 +270,19 @@ export class ApiService {
                       };
                       onChunk(textMessage);
 
+                      // Accumulate text content for final response
                       if (!isPartial) {
                         finalTextContent += part.text;
+                        console.log(
+                          'Accumulated final text:',
+                          finalTextContent,
+                        );
                       }
                     } else if ('functionCall' in part) {
+                      console.log(
+                        'Processing function call:',
+                        part.functionCall,
+                      );
                       const functionCallMessage: FunctionCallMessage = {
                         type: 'functionCall',
                         id: part.functionCall.id,
@@ -277,6 +292,10 @@ export class ApiService {
                       };
                       onChunk(functionCallMessage);
                     } else if ('functionResponse' in part) {
+                      console.log(
+                        'Processing function response:',
+                        part.functionResponse,
+                      );
                       const functionResponseMessage: FunctionResponseMessage = {
                         type: 'functionResponse',
                         id: part.functionResponse.id,
@@ -286,16 +305,6 @@ export class ApiService {
                       };
                       onChunk(functionResponseMessage);
                     }
-                  }
-
-                  // If this is the final response, call onComplete
-                  if (!isPartial) {
-                    onComplete({
-                      content: finalTextContent,
-                      plots,
-                      sessionId: sessionId,
-                    });
-                    return; // Exit early since we got the final response
                   }
                 }
 
@@ -319,7 +328,14 @@ export class ApiService {
         reader.releaseLock();
       }
 
-      // onComplete is now called when we receive the final response without "partial"
+      // Call onComplete when the stream is finished
+      if (finalTextContent.trim()) {
+        onComplete({
+          content: finalTextContent,
+          plots,
+          sessionId: sessionId,
+        });
+      }
     } catch (error: unknown) {
       console.error('SSE API Error:', error);
       if (error instanceof Error) {
