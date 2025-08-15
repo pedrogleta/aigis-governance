@@ -1,10 +1,9 @@
 import React from 'react';
-import { Code, Play, CheckCircle } from 'lucide-react';
+import { Code, CheckCircle } from 'lucide-react';
 import type {
   FunctionCallMessage,
   FunctionResponseMessage,
   TextMessage,
-  InvocationMessage,
   StreamingMessage,
 } from '../services/api';
 import ReactMarkdown from 'react-markdown';
@@ -203,60 +202,6 @@ export const TextComponent: React.FC<{
   );
 };
 
-// Component for displaying invocation messages
-export const InvocationComponent: React.FC<{ message: InvocationMessage }> = ({
-  message,
-}) => {
-  return (
-    <div className="bg-purple-900/20 border border-purple-700/50 rounded-lg p-4 mb-3">
-      <div className="flex items-center space-x-2 mb-3">
-        <div className="bg-purple-600 p-2 rounded-full">
-          <Play className="h-4 w-4 text-white" />
-        </div>
-        <div>
-          <span className="font-medium text-purple-300">
-            Invocation Started
-          </span>
-          <span className="text-xs text-purple-400 ml-2">{message.author}</span>
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <div>
-          <span className="text-sm text-purple-200 font-medium">
-            Invocation ID:
-          </span>
-          <span className="text-purple-100 ml-2 font-mono text-xs">
-            {message.invocationId}
-          </span>
-        </div>
-
-        <div>
-          <span className="text-sm text-purple-200 font-medium">Author:</span>
-          <span className="text-purple-100 ml-2">{message.author}</span>
-        </div>
-
-        {Object.keys(message.actions).length > 0 && (
-          <div>
-            <span className="text-sm text-purple-200 font-medium">
-              Actions:
-            </span>
-            <div className="mt-1 bg-purple-950/50 rounded p-2 border border-purple-800/50">
-              <pre className="text-xs text-purple-100 overflow-x-auto">
-                {JSON.stringify(message.actions, null, 2)}
-              </pre>
-            </div>
-          </div>
-        )}
-
-        <div className="text-xs text-purple-400">
-          {message.timestamp.toLocaleTimeString()}
-        </div>
-      </div>
-    </div>
-  );
-};
-
 // Main message component that renders the appropriate component based on message type
 export const StreamingMessageComponent: React.FC<MessageProps> = ({
   message,
@@ -269,8 +214,6 @@ export const StreamingMessageComponent: React.FC<MessageProps> = ({
       return <FunctionResponseComponent message={message} />;
     case 'text':
       return <TextComponent message={message} isStreaming={isStreaming} />;
-    case 'invocation':
-      return <InvocationComponent message={message} />;
     default:
       return <div>Unknown message type</div>;
   }

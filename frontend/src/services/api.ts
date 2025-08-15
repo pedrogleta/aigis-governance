@@ -57,15 +57,6 @@ const ActionsSchema = z.object({
   requestedAuthConfigs: z.record(z.string(), z.unknown()).optional(),
 });
 
-// Schema for the initial invocation message (no content.parts)
-const InvocationMessageSchema = z.object({
-  invocationId: z.string(),
-  author: z.string(),
-  actions: ActionsSchema,
-  id: z.string(),
-  timestamp: z.number(),
-});
-
 // Schema for content messages (with content.parts)
 const ContentMessageSchema = z.object({
   content: ContentSchema,
@@ -80,10 +71,7 @@ const ContentMessageSchema = z.object({
 });
 
 // Union schema for all possible SSE message types
-const SSEMessageSchema = z.union([
-  InvocationMessageSchema,
-  ContentMessageSchema,
-]);
+const SSEMessageSchema = ContentMessageSchema;
 
 export interface ChatRequest {
   message: string;
@@ -128,19 +116,10 @@ export interface TextMessage {
   timestamp: Date;
 }
 
-export interface InvocationMessage {
-  type: 'invocation';
-  invocationId: string;
-  author: string;
-  actions: Record<string, unknown>;
-  timestamp: Date;
-}
-
 export type StreamingMessage =
   | FunctionCallMessage
   | FunctionResponseMessage
-  | TextMessage
-  | InvocationMessage;
+  | TextMessage;
 
 const CreateSessionResponseSchema = z.object({
   id: z.uuid(),
@@ -260,25 +239,13 @@ export class ApiService {
                 // Validate the data with Zod schema
                 const validatedData = SSEMessageSchema.parse(data);
 
-                // Handle different message types
-                if ('invocationId' in validatedData) {
-                  // This is an invocation message - we know these fields exist due to schema validation
-                  const invocationData = validatedData as z.infer<
-                    typeof InvocationMessageSchema
-                  >;
-                  const invocationMessage: InvocationMessage = {
-                    type: 'invocation',
-                    invocationId: invocationData.invocationId,
-                    author: invocationData.author,
-                    actions: invocationData.actions || {},
-                    timestamp: new Date(invocationData.timestamp * 1000),
-                  };
-                  onChunk(invocationMessage);
-                } else if (
+                // Only process messages that have actual content to display
+                if (
                   'content' in validatedData &&
                   validatedData.content &&
                   validatedData.content.parts
                 ) {
+                  console.log('Processing content message:', validatedData);
                   // This is a content message with parts - we know these fields exist due to schema validation
                   const contentData = validatedData as z.infer<
                     typeof ContentMessageSchema
