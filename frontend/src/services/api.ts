@@ -256,28 +256,28 @@ export class ApiService {
                   // Process each part
                   for (const part of validatedData.content.parts) {
                     if ('text' in part && part.text) {
-                      console.log(
-                        'Processing text part:',
-                        part.text,
-                        'partial:',
-                        isPartial,
-                      );
-                      const textMessage: TextMessage = {
-                        type: 'text',
-                        content: part.text,
-                        partial: isPartial,
-                        timestamp,
-                      };
-                      onChunk(textMessage);
-
-                      // Accumulate text content for final response
-                      if (!isPartial) {
-                        finalTextContent += part.text;
+                      // Only display text chunks when they're partial (streaming)
+                      // When partial: false, the backend sends the complete message again,
+                      // so we don't want to display it as a duplicate chunk
+                      if (isPartial) {
                         console.log(
-                          'Accumulated final text:',
-                          finalTextContent,
+                          'Processing text part:',
+                          part.text,
+                          'partial:',
+                          isPartial,
                         );
+                        const textMessage: TextMessage = {
+                          type: 'text',
+                          content: part.text,
+                          partial: true,
+                          timestamp,
+                        };
+                        onChunk(textMessage);
                       }
+
+                      // Always accumulate text content for final response
+                      finalTextContent += part.text;
+                      console.log('Accumulated final text:', finalTextContent);
                     } else if ('functionCall' in part) {
                       console.log(
                         'Processing function call:',
