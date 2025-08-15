@@ -1,6 +1,90 @@
 // ADK API Service for chat and session management
 import { z } from 'zod';
 
+// Zod schemas for streaming responses
+const FunctionCallSchema = z.object({
+  id: z.string(),
+  args: z.record(z.string(), z.unknown()),
+  name: z.string(),
+});
+
+const FunctionResponseSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  response: z.object({
+    result: z.string(),
+  }),
+});
+
+const PartSchema = z.union([
+  z.object({ text: z.string() }),
+  z.object({ functionCall: FunctionCallSchema }),
+  z.object({ functionResponse: FunctionResponseSchema }),
+]);
+
+const ContentSchema = z.object({
+  parts: z.array(PartSchema),
+  role: z.string(),
+});
+
+const UsageMetadataSchema = z.object({
+  candidatesTokenCount: z.number().optional(),
+  candidatesTokensDetails: z
+    .array(
+      z.object({
+        modality: z.string(),
+        tokenCount: z.number(),
+      }),
+    )
+    .optional(),
+  promptTokenCount: z.number().optional(),
+  promptTokensDetails: z
+    .array(
+      z.object({
+        modality: z.string(),
+        tokenCount: z.number(),
+      }),
+    )
+    .optional(),
+  thoughtsTokenCount: z.number().optional(),
+  totalTokenCount: z.number().optional(),
+  trafficType: z.string().optional(),
+});
+
+const ActionsSchema = z.object({
+  stateDelta: z.record(z.string(), z.unknown()).optional(),
+  artifactDelta: z.record(z.string(), z.unknown()).optional(),
+  requestedAuthConfigs: z.record(z.string(), z.unknown()).optional(),
+});
+
+// Schema for the initial invocation message (no content.parts)
+const InvocationMessageSchema = z.object({
+  invocationId: z.string(),
+  author: z.string(),
+  actions: ActionsSchema,
+  id: z.string(),
+  timestamp: z.number(),
+});
+
+// Schema for content messages (with content.parts)
+const ContentMessageSchema = z.object({
+  content: ContentSchema,
+  usageMetadata: UsageMetadataSchema.optional(),
+  invocationId: z.string().optional(),
+  author: z.string().optional(),
+  actions: ActionsSchema.optional(),
+  longRunningToolIds: z.array(z.string()).optional(),
+  id: z.string(),
+  timestamp: z.number(),
+  partial: z.boolean().optional(),
+});
+
+// Union schema for all possible SSE message types
+const SSEMessageSchema = z.union([
+  InvocationMessageSchema,
+  ContentMessageSchema,
+]);
+
 export interface ChatRequest {
   message: string;
   streaming?: boolean;
@@ -20,6 +104,44 @@ export interface StreamingChatResponse {
   error?: string;
 }
 
+// New interfaces for different message types
+export interface FunctionCallMessage {
+  type: 'functionCall';
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+  timestamp: Date;
+}
+
+export interface FunctionResponseMessage {
+  type: 'functionResponse';
+  id: string;
+  name: string;
+  result: string;
+  timestamp: Date;
+}
+
+export interface TextMessage {
+  type: 'text';
+  content: string;
+  partial: boolean;
+  timestamp: Date;
+}
+
+export interface InvocationMessage {
+  type: 'invocation';
+  invocationId: string;
+  author: string;
+  actions: Record<string, unknown>;
+  timestamp: Date;
+}
+
+export type StreamingMessage =
+  | FunctionCallMessage
+  | FunctionResponseMessage
+  | TextMessage
+  | InvocationMessage;
+
 const CreateSessionResponseSchema = z.object({
   id: z.uuid(),
   appName: z.string(),
@@ -29,7 +151,7 @@ const CreateSessionResponseSchema = z.object({
   lastUpdateTime: z.number(),
 });
 
-type CreateSessionResponse = z.infer<typeof CreateSessionResponseSchema>;
+// type CreateSessionResponse = z.infer<typeof CreateSessionResponseSchema>;
 
 export class ApiService {
   private baseUrl: string;
@@ -74,7 +196,7 @@ export class ApiService {
   // Send a chat message to the ADK agent with streaming support
   async sendMessageStreaming(
     message: string,
-    onChunk: (chunk: StreamingChatResponse) => void,
+    onChunk: (chunk: StreamingMessage) => void,
     onComplete: (finalResponse: ChatResponse) => void,
     onError: (error: string) => void,
   ): Promise<void> {
@@ -115,7 +237,8 @@ export class ApiService {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
-      let plots: string[] = [];
+      const plots: string[] = [];
+      let finalTextContent = '';
 
       try {
         while (true) {
@@ -134,26 +257,74 @@ export class ApiService {
               try {
                 const data = JSON.parse(line.slice(6));
 
-                if (data.content && data.content.parts) {
-                  const textContent = data.content.parts
-                    .map((part: any) => part.text || '')
-                    .filter((text: string) => text.trim())
-                    .join('');
+                // Validate the data with Zod schema
+                const validatedData = SSEMessageSchema.parse(data);
 
-                  // Check if this is a partial response
-                  const isPartial = data.partial === true;
+                // Handle different message types
+                if ('invocationId' in validatedData) {
+                  // This is an invocation message - we know these fields exist due to schema validation
+                  const invocationData = validatedData as z.infer<
+                    typeof InvocationMessageSchema
+                  >;
+                  const invocationMessage: InvocationMessage = {
+                    type: 'invocation',
+                    invocationId: invocationData.invocationId,
+                    author: invocationData.author,
+                    actions: invocationData.actions || {},
+                    timestamp: new Date(invocationData.timestamp * 1000),
+                  };
+                  onChunk(invocationMessage);
+                } else if (
+                  'content' in validatedData &&
+                  validatedData.content &&
+                  validatedData.content.parts
+                ) {
+                  // This is a content message with parts - we know these fields exist due to schema validation
+                  const contentData = validatedData as z.infer<
+                    typeof ContentMessageSchema
+                  >;
+                  const timestamp = new Date(contentData.timestamp * 1000);
+                  const isPartial = contentData.partial === true;
 
-                  if (isPartial) {
-                    // Only call onChunk for partial responses to avoid duplication
-                    onChunk({
-                      content: textContent,
-                      partial: true,
-                      sessionId: sessionId,
-                    });
-                  } else {
-                    // This is the final response without "partial", so call onComplete
+                  // Process each part
+                  for (const part of validatedData.content.parts) {
+                    if ('text' in part && part.text) {
+                      const textMessage: TextMessage = {
+                        type: 'text',
+                        content: part.text,
+                        partial: isPartial,
+                        timestamp,
+                      };
+                      onChunk(textMessage);
+
+                      if (!isPartial) {
+                        finalTextContent += part.text;
+                      }
+                    } else if ('functionCall' in part) {
+                      const functionCallMessage: FunctionCallMessage = {
+                        type: 'functionCall',
+                        id: part.functionCall.id,
+                        name: part.functionCall.name,
+                        args: part.functionCall.args,
+                        timestamp,
+                      };
+                      onChunk(functionCallMessage);
+                    } else if ('functionResponse' in part) {
+                      const functionResponseMessage: FunctionResponseMessage = {
+                        type: 'functionResponse',
+                        id: part.functionResponse.id,
+                        name: part.functionResponse.name,
+                        result: part.functionResponse.response.result,
+                        timestamp,
+                      };
+                      onChunk(functionResponseMessage);
+                    }
+                  }
+
+                  // If this is the final response, call onComplete
+                  if (!isPartial) {
                     onComplete({
-                      content: textContent,
+                      content: finalTextContent,
                       plots,
                       sessionId: sessionId,
                     });
@@ -162,9 +333,15 @@ export class ApiService {
                 }
 
                 // Handle artifacts if they exist
-                if (data.actions && data.actions.artifactDelta) {
-                  console.log('Artifacts found:', data.actions.artifactDelta);
-                }
+                // if (
+                //   validatedData.actions &&
+                //   validatedData.actions.artifactDelta
+                // ) {
+                //   console.log(
+                //     'Artifacts found:',
+                //     validatedData.actions.artifactDelta,
+                //   );
+                // }
               } catch (parseError) {
                 console.warn('Failed to parse SSE data:', line, parseError);
               }
@@ -176,12 +353,16 @@ export class ApiService {
       }
 
       // onComplete is now called when we receive the final response without "partial"
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('SSE API Error:', error);
-      if (error.name === 'AbortError') {
-        onError('Request timed out. Please try again.');
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          onError('Request timed out. Please try again.');
+        } else {
+          onError(error.message || 'Unknown error');
+        }
       } else {
-        onError(error.message || 'Unknown error');
+        onError('Unknown error occurred');
       }
     }
   }
@@ -211,21 +392,39 @@ export class ApiService {
 
       // Parse ADK API response - it returns an array of objects
       let content = '';
-      let plots: string[] = [];
+      const plots: string[] = [];
 
       if (Array.isArray(data) && data.length > 0) {
         // Look for the content object (usually the second one with role: "model")
-        const contentObject = data.find(
-          (item: any) =>
-            item.content &&
-            item.content.parts &&
-            Array.isArray(item.content.parts),
-        );
+        const contentObject = data.find((item: Record<string, unknown>) => {
+          const content = item.content;
+          return (
+            content &&
+            typeof content === 'object' &&
+            content !== null &&
+            'parts' in content &&
+            Array.isArray((content as Record<string, unknown>).parts)
+          );
+        });
 
-        if (contentObject && contentObject.content.parts) {
+        if (
+          contentObject &&
+          typeof contentObject.content === 'object' &&
+          contentObject.content &&
+          'parts' in contentObject.content &&
+          Array.isArray(
+            (contentObject.content as Record<string, unknown>).parts,
+          )
+        ) {
           // Extract text from all parts
-          content = contentObject.content.parts
-            .map((part: any) => part.text || '')
+          const parts = (contentObject.content as Record<string, unknown>)
+            .parts as Array<Record<string, unknown>>;
+          content = parts
+            .map((part: Record<string, unknown>) =>
+              typeof part === 'object' && part && 'text' in part
+                ? String(part.text || '')
+                : '',
+            )
             .filter((text: string) => text.trim())
             .join('\n');
         }
@@ -251,13 +450,13 @@ export class ApiService {
         plots,
         sessionId: sessionId,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('API Error:', error);
       return {
         content: '',
         plots: [],
         sessionId: this.sessionId || '',
-        error: error.message || 'Unknown error',
+        error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
   }

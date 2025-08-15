@@ -1,10 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Database, BarChart3, Loader2 } from 'lucide-react';
+import { Send, Bot, User, Database, BarChart3 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { apiService } from './services/api';
-import type { ChatResponse, StreamingChatResponse } from './services/api';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import type { ChatResponse, StreamingMessage } from './services/api';
+import { StreamingMessageComponent } from './components/MessageComponents';
 
 interface Message {
   id: string;
@@ -16,6 +15,7 @@ interface Message {
   error?: string;
   startTime?: number;
   endTime?: number;
+  streamingMessages?: StreamingMessage[];
 }
 
 function App() {
@@ -45,7 +45,8 @@ function App() {
     try {
       if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext ||
-          (window as any).webkitAudioContext)();
+          (window as { webkitAudioContext?: typeof AudioContext })
+            .webkitAudioContext)();
       }
 
       const oscillator = audioContextRef.current.createOscillator();
@@ -123,6 +124,7 @@ function App() {
       timestamp: new Date(),
       isStreaming: true,
       startTime: Date.now(),
+      streamingMessages: [],
     };
 
     setMessages((prev) => [...prev, streamingAgentMessage]);
@@ -135,21 +137,31 @@ function App() {
       await apiService.sendMessageStreaming(
         inputValue,
         // onChunk callback - called for each piece of content
-        (chunk: StreamingChatResponse) => {
-          setMessages((prev) =>
-            prev.map((msg) =>
+        (chunk: StreamingMessage) => {
+          console.log('chunk found!');
+          console.log({ chunk });
+
+          setMessages((prev) => {
+            const updatedMessages = prev.map((msg) =>
               msg.id === agentMessageId
                 ? {
                     ...msg,
-                    content:
-                      msg.content === 'Typing...'
-                        ? chunk.content
-                        : msg.content + chunk.content,
-                    isStreaming: chunk.partial,
+                    streamingMessages: [
+                      ...(msg.streamingMessages || []),
+                      chunk,
+                    ],
+                    isStreaming: chunk.type === 'text' ? chunk.partial : true,
                   }
                 : msg,
-            ),
-          );
+            );
+
+            console.log('Updated messages:', updatedMessages);
+            console.log(
+              'Agent message after update:',
+              updatedMessages.find((msg) => msg.id === agentMessageId),
+            );
+            return updatedMessages;
+          });
         },
         // onComplete callback - called when streaming is finished
         (finalResponse: ChatResponse) => {
@@ -203,7 +215,7 @@ function App() {
     }
   };
 
-  const handleRetry = async (messageId: string, originalContent: string) => {
+  const handleRetry = async (messageId: string) => {
     // Find the user message that corresponds to this error message
     const messageIndex = messages.findIndex((msg) => msg.id === messageId);
     if (messageIndex === -1) return;
@@ -236,6 +248,7 @@ function App() {
       timestamp: new Date(),
       isStreaming: true,
       startTime: Date.now(),
+      streamingMessages: [],
     };
 
     setMessages((prev) => [...prev, streamingAgentMessage]);
@@ -246,21 +259,25 @@ function App() {
     try {
       await apiService.sendMessageStreaming(
         userMessage.content,
-        (chunk: StreamingChatResponse) => {
-          setMessages((prev) =>
-            prev.map((msg) =>
+        (chunk: StreamingMessage) => {
+          console.log('Retry chunk found!', chunk);
+          setMessages((prev) => {
+            const updatedMessages = prev.map((msg) =>
               msg.id === agentMessageId
                 ? {
                     ...msg,
-                    content:
-                      msg.content === 'Typing...'
-                        ? chunk.content
-                        : msg.content + chunk.content,
-                    isStreaming: chunk.partial,
+                    streamingMessages: [
+                      ...(msg.streamingMessages || []),
+                      chunk,
+                    ],
+                    isStreaming: chunk.type === 'text' ? chunk.partial : true,
                   }
                 : msg,
-            ),
-          );
+            );
+
+            console.log('Retry updated messages:', updatedMessages);
+            return updatedMessages;
+          });
         },
         (finalResponse: ChatResponse) => {
           setMessages((prev) =>
@@ -425,7 +442,21 @@ function App() {
                     </span>
                   </div>
                   <div className="text-gray-200 leading-relaxed prose prose-invert prose-green max-w-none">
-                    {message.content === 'Typing...' ? (
+                    {/* Display streaming messages if available */}
+                    {message.streamingMessages &&
+                    message.streamingMessages.length > 0 ? (
+                      <div className="space-y-3">
+                        {message.streamingMessages.map(
+                          (streamingMsg, index) => (
+                            <StreamingMessageComponent
+                              key={`${streamingMsg.type}-${index}`}
+                              message={streamingMsg}
+                              isStreaming={message.isStreaming}
+                            />
+                          ),
+                        )}
+                      </div>
+                    ) : message.content === 'Typing...' ? (
                       <div className="typing-indicator">
                         <span className="text-sm text-gray-400">
                           AI is thinking
@@ -435,69 +466,8 @@ function App() {
                         <div className="typing-dot"></div>
                       </div>
                     ) : (
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                          // Custom styling for code blocks
-                          code: ({ className, children, ...props }: any) => {
-                            const match = /language-(\w+)/.exec(
-                              className || '',
-                            );
-                            const isInline = !match;
-                            return !isInline ? (
-                              <pre className="bg-gray-800 rounded-lg p-4 border border-gray-700 overflow-x-auto">
-                                <code className={className} {...props}>
-                                  {children}
-                                </code>
-                              </pre>
-                            ) : (
-                              <code
-                                className="bg-gray-800 px-1 py-0.5 rounded text-green-300 text-sm"
-                                {...props}
-                              >
-                                {children}
-                              </code>
-                            );
-                          },
-                          // Custom styling for tables
-                          table: ({ children }) => (
-                            <div className="overflow-x-auto">
-                              <table className="min-w-full border-collapse border border-gray-700">
-                                {children}
-                              </table>
-                            </div>
-                          ),
-                          th: ({ children }) => (
-                            <th className="border border-gray-700 px-3 py-2 text-left bg-gray-800 text-green-400 font-medium">
-                              {children}
-                            </th>
-                          ),
-                          td: ({ children }) => (
-                            <td className="border border-gray-700 px-3 py-2 text-left">
-                              {children}
-                            </td>
-                          ),
-                          // Custom styling for lists
-                          ul: ({ children }) => (
-                            <ul className="list-disc list-inside space-y-1">
-                              {children}
-                            </ul>
-                          ),
-                          ol: ({ children }) => (
-                            <ol className="list-decimal list-inside space-y-1">
-                              {children}
-                            </ol>
-                          ),
-                          // Custom styling for blockquotes
-                          blockquote: ({ children }) => (
-                            <blockquote className="border-l-4 border-green-500 pl-4 italic text-gray-300 bg-gray-800 py-2 rounded-r">
-                              {children}
-                            </blockquote>
-                          ),
-                        }}
-                      >
-                        {message.content}
-                      </ReactMarkdown>
+                      /* Fallback to regular content display */
+                      <div>{message.content}</div>
                     )}
 
                     {/* Streaming indicator */}
@@ -509,16 +479,19 @@ function App() {
                     )}
 
                     {/* Progress bar for streaming messages */}
-                    {message.isStreaming && message.content !== 'Typing...' && (
-                      <div className="mt-3">
-                        <div className="progress-bar">
-                          <div className="progress-fill"></div>
+                    {message.isStreaming &&
+                      message.content !== 'Typing...' &&
+                      message.streamingMessages &&
+                      message.streamingMessages.length > 0 && (
+                        <div className="mt-3">
+                          <div className="progress-bar">
+                            <div className="progress-fill"></div>
+                          </div>
+                          <div className="text-xs text-gray-500 mt-2">
+                            {message.streamingMessages.length} messages received
+                          </div>
                         </div>
-                        <div className="text-xs text-gray-500 mt-2">
-                          {message.content.length} characters generated
-                        </div>
-                      </div>
-                    )}
+                      )}
 
                     {/* Blinking cursor for streaming messages */}
                     {message.isStreaming && message.content !== 'Typing...' && (
@@ -548,9 +521,7 @@ function App() {
                     {message.error && (
                       <div className="mt-3">
                         <button
-                          onClick={() =>
-                            handleRetry(message.id, message.content)
-                          }
+                          onClick={() => handleRetry(message.id)}
                           className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors duration-200"
                         >
                           Retry Request
