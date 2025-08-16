@@ -25,6 +25,15 @@ if ! command -v adk &> /dev/null; then
     uv sync
 fi
 
+# Copy .env file from parent directory if it exists
+if [ -f "../.env" ]; then
+    echo "📄 Copying .env from parent directory..."
+    cp ../.env .env
+else
+    echo "⚠️  No .env file found in parent directory."
+fi
+
+
 echo "✅ Starting ADK API server..."
 echo "🌐 The server will provide ADK API endpoints"
 echo "📱 Frontend should connect to: http://localhost:8000"
