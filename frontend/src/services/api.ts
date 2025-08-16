@@ -1,5 +1,6 @@
 // ADK API Service for chat and session management
 import { z } from 'zod';
+import { MinioService } from './minio';
 
 // Zod schemas for streaming responses
 const FunctionCallSchema = z.object({
@@ -116,10 +117,17 @@ export interface TextMessage {
   timestamp: Date;
 }
 
+export interface PlotMessage {
+  type: 'plot';
+  filename: string;
+  timestamp: Date;
+}
+
 export type StreamingMessage =
   | FunctionCallMessage
   | FunctionResponseMessage
-  | TextMessage;
+  | TextMessage
+  | PlotMessage;
 
 const CreateSessionResponseSchema = z.object({
   id: z.uuid(),
@@ -137,6 +145,7 @@ export class ApiService {
   private appName: string;
   private userId: string;
   private sessionId: string = '';
+  private initialFileCount: number = 0;
 
   constructor(
     baseUrl: string = 'http://localhost:8000',
@@ -146,6 +155,49 @@ export class ApiService {
     this.baseUrl = baseUrl;
     this.appName = appName;
     this.userId = userId;
+    this.initializeFileCount();
+  }
+
+  // Initialize the file count from MinIO
+  private async initializeFileCount(): Promise<void> {
+    try {
+      await MinioService.ensureBucket();
+      this.initialFileCount = await MinioService.getFileCount();
+      console.log('Initial MinIO file count:', this.initialFileCount);
+    } catch (error) {
+      console.error('Error initializing file count:', error);
+      this.initialFileCount = 0;
+    }
+  }
+
+  // Get the current file count from MinIO
+  async getCurrentFileCount(): Promise<number> {
+    try {
+      return await MinioService.getFileCount();
+    } catch (error) {
+      console.error('Error getting current file count:', error);
+      return this.initialFileCount;
+    }
+  }
+
+  // Check if new files were added and get the latest one
+  async checkForNewFiles(): Promise<string | null> {
+    try {
+      const currentCount = await this.getCurrentFileCount();
+      if (currentCount > this.initialFileCount) {
+        // New files were added, get the latest one
+        const latestFile = await MinioService.getLatestFile();
+        if (latestFile) {
+          // Update the initial count to the current count
+          this.initialFileCount = currentCount;
+          return latestFile;
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error('Error checking for new files:', error);
+      return null;
+    }
   }
 
   // Create a new session if one does not exist
@@ -306,6 +358,23 @@ export class ApiService {
                         timestamp,
                       };
                       onChunk(functionResponseMessage);
+
+                      // Check if new plots were generated
+                      try {
+                        const newFile = await this.checkForNewFiles();
+                        if (newFile) {
+                          console.log('New plot file detected:', newFile);
+                          // Create a plot message to display the image
+                          const plotMessage: PlotMessage = {
+                            type: 'plot',
+                            filename: newFile,
+                            timestamp,
+                          };
+                          onChunk(plotMessage);
+                        }
+                      } catch (error) {
+                        console.error('Error checking for new plots:', error);
+                      }
                     }
                   }
                 }

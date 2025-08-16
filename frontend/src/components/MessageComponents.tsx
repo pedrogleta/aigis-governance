@@ -1,9 +1,10 @@
 import React from 'react';
-import { Code, CheckCircle } from 'lucide-react';
+import { Code, CheckCircle, Image } from 'lucide-react';
 import type {
   FunctionCallMessage,
   FunctionResponseMessage,
   TextMessage,
+  PlotMessage,
   StreamingMessage,
 } from '../services/api';
 import ReactMarkdown from 'react-markdown';
@@ -202,6 +203,75 @@ export const TextComponent: React.FC<{
   );
 };
 
+// Component for displaying plot messages
+export const PlotComponent: React.FC<{
+  message: PlotMessage;
+}> = ({ message }) => {
+  const [imageUrl, setImageUrl] = React.useState<string | null>(null);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const loadImage = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        
+        // Get presigned URL from MinIO
+        const { MinioService } = await import('../services/minio');
+        const url = await MinioService.getFileUrl(message.filename);
+        setImageUrl(url);
+      } catch (err) {
+        console.error('Error loading plot image:', err);
+        setError('Failed to load plot image');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadImage();
+  }, [message.filename]);
+
+  return (
+    <div className="bg-purple-900/20 border border-purple-700/50 rounded-lg p-4 mb-3">
+      <div className="flex items-center space-x-2 mb-3">
+        <div className="bg-purple-600 p-2 rounded-full">
+          <Image className="h-4 w-4 text-white" />
+        </div>
+        <div>
+          <span className="font-medium text-purple-300">Generated Plot</span>
+          <span className="text-xs text-purple-400 ml-2">{message.filename}</span>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {isLoading && (
+          <div className="text-purple-200 text-sm">Loading plot...</div>
+        )}
+        
+        {error && (
+          <div className="text-red-400 text-sm">Error: {error}</div>
+        )}
+        
+        {imageUrl && !isLoading && (
+          <div className="mt-2">
+            <img
+              src={imageUrl}
+              alt="Generated plot"
+              className="max-w-full h-auto rounded border border-purple-600/50"
+              onError={() => setError('Failed to display image')}
+            />
+          </div>
+        )}
+
+        <div className="text-xs text-purple-400">
+          {message.timestamp.toLocaleTimeString()}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Main message component that renders the appropriate component based on message type
 export const StreamingMessageComponent: React.FC<MessageProps> = ({
   message,
@@ -214,6 +284,8 @@ export const StreamingMessageComponent: React.FC<MessageProps> = ({
       return <FunctionResponseComponent message={message} />;
     case 'text':
       return <TextComponent message={message} isStreaming={isStreaming} />;
+    case 'plot':
+      return <PlotComponent message={message} />;
     default:
       return <div>Unknown message type</div>;
   }

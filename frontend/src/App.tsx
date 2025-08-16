@@ -84,6 +84,8 @@ function App() {
   useEffect(() => {
     // Check connection status on component mount
     checkConnection();
+    // Initialize MinIO file count
+    initializeFileCount();
   }, []);
 
   const checkConnection = async () => {
@@ -97,6 +99,15 @@ function App() {
       );
     } catch {
       setConnectionStatus('disconnected');
+    }
+  };
+
+  const initializeFileCount = async () => {
+    try {
+      await apiService.ensureSession();
+      console.log('MinIO file count initialized');
+    } catch (error) {
+      console.error('Error initializing MinIO file count:', error);
     }
   };
 

@@ -46,6 +46,23 @@ services:
       timeout: 10s
       retries: 3
 
+  minio-service:
+    build:
+      context: ./minio-service
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - MINIO_ENDPOINT=minio
+    depends_on:
+      - minio
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 volumes:
   minio_data:
     name: aigis_minio_data

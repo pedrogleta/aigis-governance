@@ -205,3 +205,5 @@ __marimo__/
 *.csv
 
 credentials.json
+
+node_modules

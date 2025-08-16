@@ -1,6 +1,7 @@
 import base64
-from pathlib import Path
-from llm_sandbox import ArtifactSandboxSession
+import uuid
+from minio import Minio
+from minio.error import S3Error
 
 
 def execute_python(code_raw: str) -> str:
@@ -14,6 +15,8 @@ def execute_python(code_raw: str) -> str:
         str: stdout, stderr and number of plots generated if any
     """
 
+    from llm_sandbox import ArtifactSandboxSession
+
     with ArtifactSandboxSession(lang="python") as session:
         result = session.run(
             code_raw,
@@ -26,9 +29,47 @@ def execute_python(code_raw: str) -> str:
         plots: {len(result.plots)}
         """
 
+        # Initialize MinIO client
+        minio_client = Minio(
+            "minio:9000", access_key="minioadmin", secret_key="minioadmin", secure=False
+        )
+
+        # Ensure bucket exists
+        bucket_name = "aigis-data-governance"
+        try:
+            if not minio_client.bucket_exists(bucket_name):
+                minio_client.make_bucket(bucket_name)
+        except S3Error as e:
+            print(f"Error creating bucket: {e}")
+
+        # Store plots in MinIO with random UUID names
+        plot_urls = []
         for i, plot in enumerate(result.plots):
-            plot_path = Path(f"plot_{i + 1}.{plot.format.value}")
-            with plot_path.open("wb") as f:
-                f.write(base64.b64decode(plot.content_base64))
+            # Generate random UUID for filename
+            plot_uuid = str(uuid.uuid4())
+            plot_filename = f"{plot_uuid}.{plot.format.value}"
+
+            try:
+                # Upload plot to MinIO
+                plot_data = base64.b64decode(plot.content_base64)
+                from io import BytesIO
+
+                minio_client.put_object(
+                    bucket_name,
+                    plot_filename,
+                    BytesIO(plot_data),
+                    length=len(plot_data),
+                    content_type=f"image/{plot.format.value}",
+                )
+
+                # Store the filename for reference
+                plot_urls.append(plot_filename)
+
+            except S3Error as e:
+                print(f"Error uploading plot {i + 1}: {e}")
+
+        # Add plot URLs to response if any were uploaded
+        if plot_urls:
+            response += f"\nplot_files: {','.join(plot_urls)}"
 
         return response
