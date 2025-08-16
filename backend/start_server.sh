@@ -5,7 +5,7 @@
 
 echo "🚀 Starting AIGIS Governance Backend..."
 echo "📊 Using Google ADK framework for AI agents"
-echo "🔗 Server will be available at: http://localhost:8000"
+echo "🔗 Server will be available at: http://0.0.0.0:8000 (accessible from host at http://localhost:8000)"
 echo ""
 
 # Check if virtual environment exists
@@ -33,4 +33,4 @@ echo "Press Ctrl+C to stop the server"
 echo ""
 
 # Start the ADK API server
-adk api_server --allow_origins="*"
+adk api_server --host 0.0.0.0 --allow_origins="*"
