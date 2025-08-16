@@ -24,8 +24,8 @@ from datetime import date
 from google.genai import types
 
 from google.adk.agents import Agent
+from google.adk.models.lite_llm import LiteLlm
 from google.adk.agents.callback_context import CallbackContext
-from google.adk.tools import load_artifacts
 
 from opik.integrations.adk import OpikTracer, track_adk_agent_recursive
 from dotenv import load_dotenv
@@ -77,8 +77,13 @@ def setup_before_agent_call(callback_context: CallbackContext):
         )
 
 
+available_models = {
+    "gemini-2.5-flash": "gemini-2.5-flash",
+    "deepseek-chat": LiteLlm(model="deepseek/deepseek-chat"),
+}
+
 root_agent = Agent(
-    model=os.getenv("ROOT_AGENT_MODEL") or "gemini-2.5-pro",
+    model=available_models["deepseek-chat"],
     name="db_ds_multiagent",
     instruction=return_instructions_root(),
     global_instruction=(
@@ -87,11 +92,7 @@ root_agent = Agent(
         Todays date: {date_today}
         """
     ),
-    tools=[
-        call_db_agent,
-        call_ds_agent,
-        load_artifacts,
-    ],
+    tools=[call_db_agent, call_ds_agent],
     before_agent_callback=setup_before_agent_call,
     generate_content_config=types.GenerateContentConfig(temperature=0.01),
 )
