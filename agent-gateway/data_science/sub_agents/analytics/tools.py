@@ -31,7 +31,10 @@ def execute_python(code_raw: str) -> str:
 
         # Initialize MinIO client
         minio_client = Minio(
-            "minio:9000", access_key="minioadmin", secret_key="minioadmin", secure=False
+            "localhost:9000",
+            access_key="minioadmin",
+            secret_key="minioadmin",
+            secure=False,
         )
 
         # Ensure bucket exists
