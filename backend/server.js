@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const { Client } = require('minio');
+require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -9,13 +10,13 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// MinIO client configuration
+// MinIO client configuration with environment variables
 const minioClient = new Client({
-  endPoint: process.env.MINIO_ENDPOINT || 'localhost', // Use env var or fallback to localhost
+  endPoint: process.env.MINIO_HOST || 'localhost',
   port: 9000,
   useSSL: false,
-  accessKey: 'minioadmin',
-  secretKey: 'minioadmin',
+  accessKey: process.env.MINIO_ROOT_USER || 'minioadmin',
+  secretKey: process.env.MINIO_ROOT_PASSWORD || 'minioadmin',
 });
 
 const BUCKET_NAME = 'aigis-data-governance';
@@ -177,6 +178,6 @@ app.listen(PORT, () => {
   console.log(`MinIO service running on port ${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/health`);
   console.log(
-    `Connecting to MinIO at: ${process.env.MINIO_ENDPOINT || 'localhost'}:9000`,
+    `Connecting to MinIO at: ${process.env.MINIO_HOST || 'localhost'}:9000`,
   );
 });

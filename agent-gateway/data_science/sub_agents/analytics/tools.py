@@ -1,7 +1,12 @@
 import base64
 import uuid
+import os
+from dotenv import load_dotenv
 from minio import Minio
 from minio.error import S3Error
+
+# Load environment variables from .env file
+load_dotenv(override=True)
 
 
 def execute_python(code_raw: str) -> str:
@@ -29,11 +34,15 @@ def execute_python(code_raw: str) -> str:
         plots: {len(result.plots)}
         """
 
-        # Initialize MinIO client
+        # Initialize MinIO client with environment variables
+        minio_host = os.getenv("MINIO_HOST", "localhost")
+        minio_user = os.getenv("MINIO_ROOT_USER", "minioadmin")
+        minio_password = os.getenv("MINIO_ROOT_PASSWORD", "minioadmin")
+
         minio_client = Minio(
-            "localhost:9000",
-            access_key="minioadmin",
-            secret_key="minioadmin",
+            f"{minio_host}:9000",
+            access_key=minio_user,
+            secret_key=minio_password,
             secure=False,
         )
 
