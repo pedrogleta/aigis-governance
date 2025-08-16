@@ -28,6 +28,8 @@ from google.adk.agents.callback_context import CallbackContext
 from google.adk.tools import load_artifacts
 
 from opik.integrations.adk import OpikTracer, track_adk_agent_recursive
+from dotenv import load_dotenv
+
 
 from typing import cast
 
@@ -36,6 +38,13 @@ from .sub_agents.bigquery.tools import (
 )
 from .prompts import return_instructions_root
 from .tools import call_db_agent, call_ds_agent
+
+load_dotenv(override=True)
+
+# Set credentials.json
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+credential_path = os.path.join(os.path.dirname(BASE_DIR), "credentials.json")
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credential_path
 
 opik_tracer = OpikTracer()
 

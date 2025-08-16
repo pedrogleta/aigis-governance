@@ -1,33 +1,4 @@
 services:
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    volumes:
-      - ./backend:/app:rw
-    ports:
-      - "8000:8000"
-    environment:
-      - PYTHONUNBUFFERED=1
-      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
-    depends_on:
-      - minio
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    volumes:
-      - ./frontend:/app:rw
-      - /app/node_modules
-    ports:
-      - "5173:5173"
-    environment:
-      - CHOKIDAR_USEPOLLING=true
-      - VITE_API_BASE_URL=http://backend:8000
-    depends_on:
-      - backend
-
   minio:
     image: minio/minio:latest
     command: server /data --console-address ":9001"
@@ -42,23 +13,6 @@ services:
       - minio_config:/root/.minio
     healthcheck:
       test: ["CMD", "/bin/sh", "-c", "curl -fsS http://localhost:9000/minio/health/live || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  minio-service:
-    build:
-      context: ./minio-service
-      dockerfile: Dockerfile
-    ports:
-      - "3001:3001"
-    environment:
-      - NODE_ENV=production
-      - MINIO_ENDPOINT=minio
-    depends_on:
-      - minio
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 30s
       timeout: 10s
       retries: 3
