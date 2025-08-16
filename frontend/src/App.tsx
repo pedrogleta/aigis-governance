@@ -4,6 +4,7 @@ import { cn } from './lib/utils';
 import { apiService } from './services/api';
 import type { ChatResponse, StreamingMessage } from './services/api';
 import { StreamingMessageComponent } from './components/MessageComponents';
+import { StreamingTextComponent } from './components/MessageComponents';
 
 interface Message {
   id: string;
@@ -161,6 +162,13 @@ function App() {
                       ...(msg.streamingMessages || []),
                       chunk,
                     ],
+                    // Accumulate text content for streaming messages
+                    content:
+                      chunk.type === 'text' && chunk.partial
+                        ? msg.content === 'Typing...'
+                          ? chunk.content
+                          : msg.content + chunk.content
+                        : msg.content,
                     isStreaming: chunk.type === 'text' ? chunk.partial : true,
                   }
                 : msg,
@@ -457,15 +465,24 @@ function App() {
                     {message.streamingMessages &&
                     message.streamingMessages.length > 0 ? (
                       <div className="space-y-3">
-                        {message.streamingMessages.map(
-                          (streamingMsg, index) => (
+                        {/* For text messages, show the accumulated content with markdown */}
+                        {message.content && message.content !== 'Typing...' && (
+                          <StreamingTextComponent
+                            content={message.content}
+                            isStreaming={message.isStreaming || false}
+                          />
+                        )}
+
+                        {/* For non-text messages (function calls, responses, plots), show individual components */}
+                        {message.streamingMessages
+                          .filter((msg) => msg.type !== 'text')
+                          .map((streamingMsg, index) => (
                             <StreamingMessageComponent
                               key={`${streamingMsg.type}-${index}`}
                               message={streamingMsg}
                               isStreaming={message.isStreaming}
                             />
-                          ),
-                        )}
+                          ))}
                       </div>
                     ) : message.content === 'Typing...' ? (
                       <div className="typing-indicator">

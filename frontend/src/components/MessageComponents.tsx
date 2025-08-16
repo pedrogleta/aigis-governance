@@ -15,6 +15,81 @@ interface MessageProps {
   isStreaming?: boolean;
 }
 
+// Component for handling streaming text content intelligently
+export const StreamingTextComponent: React.FC<{
+  content: string;
+  isStreaming: boolean;
+}> = ({ content, isStreaming }) => {
+  // Only render markdown when not streaming to avoid breaking up structured content
+  if (isStreaming) {
+    return <div className="whitespace-pre-wrap">{content}</div>;
+  }
+
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        // Custom styling for code blocks
+        code: ({
+          className,
+          children,
+          ...props
+        }: React.ComponentProps<'code'>) => {
+          const match = /language-(\w+)/.exec(className || '');
+          const isInline = !match;
+          return !isInline ? (
+            <pre className="bg-gray-800 rounded-lg p-4 border border-gray-700 overflow-x-auto">
+              <code className={className} {...props}>
+                {children}
+              </code>
+            </pre>
+          ) : (
+            <code
+              className="bg-gray-800 px-1 py-0.5 rounded text-green-300 text-sm"
+              {...props}
+            >
+              {children}
+            </code>
+          );
+        },
+        // Custom styling for tables
+        table: ({ children }) => (
+          <div className="overflow-x-auto">
+            <table className="min-w-full border-collapse border border-gray-700">
+              {children}
+            </table>
+          </div>
+        ),
+        th: ({ children }) => (
+          <th className="border border-gray-700 px-3 py-2 text-left bg-gray-800 text-green-400 font-medium">
+            {children}
+          </th>
+        ),
+        td: ({ children }) => (
+          <td className="border border-gray-700 px-3 py-2 text-left">
+            {children}
+          </td>
+        ),
+        // Custom styling for lists
+        ul: ({ children }) => (
+          <ul className="list-disc list-inside space-y-1">{children}</ul>
+        ),
+        ol: ({ children }) => (
+          <ol className="list-decimal list-inside space-y-1">{children}</ol>
+        ),
+        // Custom styling for blockquotes
+        blockquote: ({ children }) => (
+          <blockquote className="border-l-4 border-green-500 pl-4 italic text-gray-300 bg-gray-800 py-2 rounded-r">
+            {children}
+          </blockquote>
+        ),
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+};
+
 // Component for displaying function calls
 export const FunctionCallComponent: React.FC<{
   message: FunctionCallMessage;
@@ -109,69 +184,10 @@ export const TextComponent: React.FC<{
             <div className="typing-dot"></div>
           </div>
         ) : (
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              // Custom styling for code blocks
-              code: ({
-                className,
-                children,
-                ...props
-              }: React.ComponentProps<'code'>) => {
-                const match = /language-(\w+)/.exec(className || '');
-                const isInline = !match;
-                return !isInline ? (
-                  <pre className="bg-gray-800 rounded-lg p-4 border border-gray-700 overflow-x-auto">
-                    <code className={className} {...props}>
-                      {children}
-                    </code>
-                  </pre>
-                ) : (
-                  <code
-                    className="bg-gray-800 px-1 py-0.5 rounded text-green-300 text-sm"
-                    {...props}
-                  >
-                    {children}
-                  </code>
-                );
-              },
-              // Custom styling for tables
-              table: ({ children }) => (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full border-collapse border border-gray-700">
-                    {children}
-                  </table>
-                </div>
-              ),
-              th: ({ children }) => (
-                <th className="border border-gray-700 px-3 py-2 text-left bg-gray-800 text-green-400 font-medium">
-                  {children}
-                </th>
-              ),
-              td: ({ children }) => (
-                <td className="border border-gray-700 px-3 py-2 text-left">
-                  {children}
-                </td>
-              ),
-              // Custom styling for lists
-              ul: ({ children }) => (
-                <ul className="list-disc list-inside space-y-1">{children}</ul>
-              ),
-              ol: ({ children }) => (
-                <ol className="list-decimal list-inside space-y-1">
-                  {children}
-                </ol>
-              ),
-              // Custom styling for blockquotes
-              blockquote: ({ children }) => (
-                <blockquote className="border-l-4 border-green-500 pl-4 italic text-gray-300 bg-gray-800 py-2 rounded-r">
-                  {children}
-                </blockquote>
-              ),
-            }}
-          >
-            {message.content}
-          </ReactMarkdown>
+          <StreamingTextComponent
+            content={message.content}
+            isStreaming={isStreaming}
+          />
         )}
       </div>
 
@@ -216,7 +232,7 @@ export const PlotComponent: React.FC<{
       try {
         setIsLoading(true);
         setError(null);
-        
+
         // Get presigned URL from MinIO
         const { MinioService } = await import('../services/minio');
         const url = await MinioService.getFileUrl(message.filename);
@@ -240,7 +256,9 @@ export const PlotComponent: React.FC<{
         </div>
         <div>
           <span className="font-medium text-purple-300">Generated Plot</span>
-          <span className="text-xs text-purple-400 ml-2">{message.filename}</span>
+          <span className="text-xs text-purple-400 ml-2">
+            {message.filename}
+          </span>
         </div>
       </div>
 
@@ -248,11 +266,9 @@ export const PlotComponent: React.FC<{
         {isLoading && (
           <div className="text-purple-200 text-sm">Loading plot...</div>
         )}
-        
-        {error && (
-          <div className="text-red-400 text-sm">Error: {error}</div>
-        )}
-        
+
+        {error && <div className="text-red-400 text-sm">Error: {error}</div>}
+
         {imageUrl && !isLoading && (
           <div className="mt-2">
             <img
