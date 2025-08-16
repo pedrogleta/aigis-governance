@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Start the backend
+# Start the frontend
 
 echo "🚀 Starting Frontend..."
 echo "🔗 Frontend will be available at: http://0.0.0.0:5173"
