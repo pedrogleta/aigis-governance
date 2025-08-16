@@ -23,20 +23,26 @@ The system consists of:
 
 Before running the project, make sure you are authenticated with Google Cloud and have access to Vertex AI:
 
-1. **Authenticate with Google Cloud CLI**  
+1. **Install PM2 globally**  
+   This project uses PM2 for process management. Install it globally:
+   ```bash
+   npm install -g pm2
+   ```
+
+2. **Authenticate with Google Cloud CLI**  
    Make sure you have the [gcloud CLI](https://cloud.google.com/sdk/docs/install) installed.  
    Run the following command and follow the prompts to log in:
    ```
    gcloud auth login
    ```
 
-2. **Set your default project**  
+3. **Set your default project**  
    Replace `<YOUR_PROJECT_ID>` with your Google Cloud project ID:
    ```
    gcloud config set project <YOUR_PROJECT_ID>
    ```
 
-3. **Use a service account for credentials (recommended)**  
+4. **Use a service account for credentials (recommended)**  
     Instead of using Application Default Credentials, create a Google Cloud service account with the following roles:
 
     - Vertex AI Service Agent (roles/aiplatform.serviceAgent)
@@ -71,24 +77,39 @@ Before running the project, make sure you are authenticated with Google Cloud an
     gcloud auth application-default login
     ```
 
-### Option 1: Full AI Agent System (Production)
+### Running the Application
 
-1. **Create and activate a virtual environment, install dependencies, and run the app**  
-   ```
-   uv venv
-   uv sync
-   source .venv/bin/activate
-   adk web
-   ```
+This project uses PM2 for process management. Follow these steps to start the system:
 
-2. **Start the React frontend** (in a new terminal):
-   ```
-   cd frontend
+1. **Install dependencies** (if not already done):
+   ```bash
    npm install
+   ```
+
+2. **Run the setup script** to start the core services:
+   ```bash
+   npm run setup
+   ```
+   This will start the setup and services processes using PM2.
+
+3. **Start the development environment**:
+   ```bash
    npm run dev
    ```
+   This will start the main application using PM2.
 
-3. **Open your browser** and navigate to `http://localhost:5173`
+4. **Open your browser** and navigate to `http://localhost:5173`
+
+### PM2 Management Commands
+
+The project includes several PM2 management commands:
+
+```bash
+npm run list      # List all running PM2 processes
+npm run logs      # View logs from all processes
+npm run stop      # Stop the main application
+npm run cleanup   # Stop and remove all PM2 processes
+```
 
 
 

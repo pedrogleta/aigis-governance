@@ -152,15 +152,51 @@ aigis-governance/
 ## Development Workflow
 
 ### Starting the Application
-1. **Agent Gateway:** Run `cd agent-gateway && ./start_gateway.sh`
-2. **Backend:** Start the file management microservice (specific startup command depends on implementation)
-3. **Frontend:** Run `cd frontend && npm run dev`
+This project now uses PM2 for process management. To start the application:
+
+1. **Install PM2 globally** (if not already installed):
+   ```bash
+   npm install -g pm2
+   ```
+
+2. **Start the setup and services**:
+   ```bash
+   npm run setup
+   ```
+   This starts the core services using PM2 configuration files.
+
+3. **Start the main application**:
+   ```bash
+   npm run dev
+   ```
+   This starts the main application using PM2.
+
+4. **Monitor processes**:
+   ```bash
+   npm run list      # List all running PM2 processes
+   npm run logs      # View logs from all processes
+   ```
+
+### PM2 Process Management
+The project uses several PM2 configuration files:
+- `setup.config.js` - Core setup processes
+- `services.config.js` - Background services
+- `app.config.js` - Main application
+
+**Useful PM2 commands:**
+```bash
+npm run stop      # Stop the main application
+npm run cleanup   # Stop and remove all PM2 processes
+pm2 restart all   # Restart all processes
+pm2 reload all    # Zero-downtime reload of all processes
+```
 
 ### Making Changes
 - **Frontend Changes:** Edit files in `frontend/src/`, changes auto-reload
-- **Agent Gateway Changes:** Restart the ADK server after changes
-- **Backend Changes:** Restart the microservice after changes
+- **Agent Gateway Changes:** Restart the PM2 process after changes: `pm2 restart <process-name>` or `npm run dev`
+- **Backend Changes:** Restart the PM2 process after changes: `pm2 restart <process-name>` or `npm run setup`
 - **API Changes:** Update both frontend service and this documentation
+- **PM2 Configuration Changes:** After modifying PM2 config files, restart the affected processes
 
 ### Testing SSE Functionality
 - **Basic Streaming:** Send a message in the chat interface and watch for real-time streaming response
