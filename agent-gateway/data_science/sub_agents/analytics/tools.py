@@ -1,11 +1,13 @@
+import re
 import base64
 import uuid
 import os
+import io
+from contextlib import redirect_stderr, redirect_stdout
 from dotenv import load_dotenv
 from minio import Minio
 from minio.error import S3Error
 
-# Load environment variables from .env file
 load_dotenv(override=True)
 
 
@@ -20,68 +22,89 @@ def execute_python(code_raw: str) -> str:
         str: stdout, stderr and number of plots generated if any
     """
 
-    from llm_sandbox import ArtifactSandboxSession
+    # Check for all instances of ".show()" and collect the word directly connected to it
 
-    with ArtifactSandboxSession(lang="python") as session:
-        result = session.run(
-            code_raw,
-            libraries=["io", "math", "re", "matplotlib", "numpy", "pandas", "scipy"],
-        )
+    plot_names = re.findall(r"(\w+)\.show\(\)", code_raw)
+    plot_codes = []
 
-        response = f"""
-        stdout: {result.stdout}
-        stderr: {result.stderr}
-        plots: {len(result.plots)}
-        """
+    if len(plot_names) > 0:
+        code_raw = "import io\nimport matplotlib.pyplot as plt\n" + code_raw
 
-        # Initialize MinIO client with environment variables
-        minio_host = os.getenv("MINIO_HOST", "localhost")
-        minio_user = os.getenv("MINIO_ROOT_USER", "minioadmin")
-        minio_password = os.getenv("MINIO_ROOT_PASSWORD", "minioadmin")
+        for plot_name in plot_names:
+            code_raw = code_raw.replace(plot_name + ".show()", "")
 
-        minio_client = Minio(
-            f"{minio_host}:9000",
-            access_key=minio_user,
-            secret_key=minio_password,
-            secure=False,
-        )
+            plot_code = plot_name + "-" + str(uuid.uuid4())
+            plot_codes.append(plot_code)
 
-        # Ensure bucket exists
-        bucket_name = "aigis-data-governance"
-        try:
-            if not minio_client.bucket_exists(bucket_name):
-                minio_client.make_bucket(bucket_name)
-        except S3Error as e:
-            print(f"Error creating bucket: {e}")
+            # Writes plots to generated_plots
+            # Can be upgraded to
+            code_raw = (
+                code_raw
+                + f"""\n
+buf = io.BytesIO()
+plt.savefig(buf, format='png')
+buf.seek(0)
+b64_string = base64.b64encode(buf.getvalue()).decode('utf-8')
+with open("./generated_plots/{plot_code}.txt", "w") as f:
+    f.write(b64_string) 
+"""
+            )
 
-        # Store plots in MinIO with random UUID names
-        plot_urls = []
-        for i, plot in enumerate(result.plots):
-            # Generate random UUID for filename
-            plot_uuid = str(uuid.uuid4())
-            plot_filename = f"{plot_uuid}.{plot.format.value}"
+    stdout_capture = io.StringIO()
+    stderr_capture = io.StringIO()
 
+    # @@TODO add logging for code generated and executed
+
+    with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
+        exec(code_raw)
+
+    response = f"""
+    stdout: {stdout_capture.getvalue().strip()}
+    stderr: {stderr_capture.getvalue().strip()}
+    generated {len(plot_names)} plots
+    """
+
+    # Initialize MinIO client with environment variables
+    minio_host = os.getenv("MINIO_HOST", "localhost")
+    minio_user = os.getenv("MINIO_ROOT_USER", "minioadmin")
+    minio_password = os.getenv("MINIO_ROOT_PASSWORD", "minioadmin")
+
+    minio_client = Minio(
+        f"{minio_host}:9000",
+        access_key=minio_user,
+        secret_key=minio_password,
+        secure=False,
+    )
+
+    # Ensure bucket exists
+    bucket_name = "aigis-data-governance"
+    try:
+        if not minio_client.bucket_exists(bucket_name):
+            minio_client.make_bucket(bucket_name)
+    except S3Error as e:
+        print(f"Error creating bucket: {e}")
+
+    for plot_code in plot_codes:
+        plot_file_path = f"./generated_plots/{plot_code}.txt"
+        with open(plot_file_path, "r") as f:
+            plot_data = f.read()
+
+            plot_filename = f"{plot_code}.png"
+
+            # Decode the base64 image data
+            plot_bytes = base64.b64decode(plot_data)
+
+            # Upload the image to MinIO
             try:
-                # Upload plot to MinIO
-                plot_data = base64.b64decode(plot.content_base64)
-                from io import BytesIO
-
                 minio_client.put_object(
                     bucket_name,
                     plot_filename,
-                    BytesIO(plot_data),
-                    length=len(plot_data),
-                    content_type=f"image/{plot.format.value}",
+                    io.BytesIO(plot_bytes),
+                    length=len(plot_bytes),
+                    content_type="image/png",
                 )
-
-                # Store the filename for reference
-                plot_urls.append(plot_filename)
-
             except S3Error as e:
-                print(f"Error uploading plot {i + 1}: {e}")
+                print(f"Error uploading plot to MinIO: {e}")
+        os.remove(plot_file_path)
 
-        # Add plot URLs to response if any were uploaded
-        if plot_urls:
-            response += f"\nplot_files: {','.join(plot_urls)}"
-
-        return response
+    return response
