@@ -88,11 +88,18 @@ This file summarizes the most important endpoints and payloads for the Google AD
   - `components/MessageComponents.tsx` - Message type-specific rendering components
   - `index.css` - Styling with streaming animations and indicators
 
-### Backend (Google ADK Framework)
-- **Location:** `backend/`
-- **Server:** Started via `start_server.sh` using `adk api_server`
+### Agent Gateway (Google ADK Framework)
+- **Location:** `agent-gateway/`
+- **Server:** Started via `start_gateway.sh` using `adk api_server`
 - **Port:** http://localhost:8000
 - **Framework:** Google ADK (Agent Development Kit)
+- **Purpose:** Handles all agent interactions, session management, and artifact operations
+
+### Backend (File Management Microservice)
+- **Location:** `backend/`
+- **Purpose:** General backend services including file storage and retrieval
+- **Key Functionality:** MinIO file management operations
+- **Architecture:** Microservice architecture separate from agent functionality
 
 ### SSE Implementation Features
 - **Real-time Streaming:** Messages appear as they're generated
@@ -123,15 +130,18 @@ aigis-governance/
 │   ├── package.json                  # Frontend dependencies
 │   ├── vite.config.ts                # Vite build configuration
 │   └── tailwind.config.js            # Tailwind CSS configuration
-├── backend/                           # Google ADK backend
+├── agent-gateway/                     # Google ADK agent gateway
 │   ├── data_science/                 # Data science agent implementation
 │   │   ├── agent.py                  # Main agent logic
 │   │   ├── prompts.py                # Prompt templates
 │   │   ├── tools.py                  # Agent tools
 │   │   └── sub_agents/               # Specialized sub-agents
-│   ├── start_server.sh               # Server startup script
+│   ├── start_gateway.sh              # Gateway startup script
 │   ├── pyproject.toml                # Python dependencies
 │   └── .venv/                        # Python virtual environment
+├── backend/                           # File management microservice
+│   ├── [file management services]    # MinIO operations and general backend functionality
+│   └── [microservice configuration]  # Service configuration and setup
 ├── docs/                             # Documentation
 │   └── sample-sse-response           # Sample SSE response for reference
 ├── AGENTS.md                         # This file - API documentation
@@ -142,12 +152,14 @@ aigis-governance/
 ## Development Workflow
 
 ### Starting the Application
-1. **Backend:** Run `cd backend && ./start_server.sh`
-2. **Frontend:** Run `cd frontend && npm run dev`
+1. **Agent Gateway:** Run `cd agent-gateway && ./start_gateway.sh`
+2. **Backend:** Start the file management microservice (specific startup command depends on implementation)
+3. **Frontend:** Run `cd frontend && npm run dev`
 
 ### Making Changes
 - **Frontend Changes:** Edit files in `frontend/src/`, changes auto-reload
-- **Backend Changes:** Restart the ADK server after changes
+- **Agent Gateway Changes:** Restart the ADK server after changes
+- **Backend Changes:** Restart the microservice after changes
 - **API Changes:** Update both frontend service and this documentation
 
 ### Testing SSE Functionality
