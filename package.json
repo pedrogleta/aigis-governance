@@ -18,11 +18,11 @@
     "doc": "docs"
   },
   "scripts": {
-    "setup": "pm2 start ecosystem.setup.config.js",
+    "setup": "pm2 start setup.config.js && pm2 start services.config.js",
     "list": "pm2 list",
-    "dev": "pm2 start ecosystem.config.js",
+    "dev": "pm2 start app.config.js",
     "logs": "pm2 logs",
-    "stop": "pm2 stop ecosystem.config.js",
-    "cleanup": "pm2 delete ecosystem.setup.config.js && pm2 delete ecosystem.config.js"
+    "stop": "pm2 stop app.config.js",
+    "cleanup": "pm2 delete app.config.js && pm2 delete services.config.js && pm2 delete setup.config.js"
   }
 }

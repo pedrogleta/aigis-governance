@@ -18,11 +18,5 @@ module.exports = {
       cwd: './agent-gateway',
       autorestart: false,
     },
-    {
-      name: 'minio',
-      script: 'setup-minio.sh',
-      cwd: './docker/minio',
-      autorestart: false,
-    },
   ],
 };
