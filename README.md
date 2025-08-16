@@ -36,11 +36,40 @@ Before running the project, make sure you are authenticated with Google Cloud an
    gcloud config set project <YOUR_PROJECT_ID>
    ```
 
-3. **Set up Application Default Credentials**  
-   This is required for Vertex AI access:
-   ```
-   gcloud auth application-default login
-   ```
+3. **Use a service account for credentials (recommended)**  
+    Instead of using Application Default Credentials, create a Google Cloud service account with the following roles:
+
+    - Vertex AI Service Agent (roles/aiplatform.serviceAgent)
+    - BigQuery Data Viewer (roles/bigquery.dataViewer)
+
+    Example commands (replace <YOUR_PROJECT_ID> and `aigis-agent` as needed):
+
+    ```bash
+    # Create the service account
+    gcloud iam service-accounts create aigis-agent --display-name="Aigis Service Account"
+
+    # Grant roles to the service account
+    gcloud projects add-iam-policy-binding <YOUR_PROJECT_ID> \
+       --member="serviceAccount:aigis-agent@<YOUR_PROJECT_ID>.iam.gserviceaccount.com" \
+       --role="roles/aiplatform.serviceAgent"
+
+    gcloud projects add-iam-policy-binding <YOUR_PROJECT_ID> \
+       --member="serviceAccount:aigis-agent@<YOUR_PROJECT_ID>.iam.gserviceaccount.com" \
+       --role="roles/bigquery.dataViewer"
+
+    # Create a JSON key and save it directly into the backend directory
+    gcloud iam service-accounts keys create backend/credentials.json \
+       --iam-account=aigis-agent@<YOUR_PROJECT_ID>.iam.gserviceaccount.com
+    ```
+
+    The command above will create a JSON key and save it as `backend/credentials.json`. Place the service-account JSON key in the `backend/` directory named `credentials.json` (this will replace the example file `backend/credentials.example.json` if present).
+
+    Important: the JSON key contains sensitive credentials. Do not commit `backend/credentials.json` to source control (add it to `.gitignore` if needed).
+
+    If you prefer to use Application Default Credentials for quick testing, you can still run:
+    ```bash
+    gcloud auth application-default login
+    ```
 
 ### Option 1: Full AI Agent System (Production)
 
