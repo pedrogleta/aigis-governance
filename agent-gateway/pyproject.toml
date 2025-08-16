@@ -1,7 +1,7 @@
 [project]
-name = "aigis-governance"
+name = "agent-gateway"
 version = "0.1"
-description = "AIGIS Governance Agent"
+description = "AIGIS Governance Agent Gateway"
 authors = [
     { name = "Pedro Leta", email = "pedrogleta@gmail.com" }
 ]

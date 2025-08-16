@@ -3,7 +3,7 @@
 # Start the ADK API server
 # This script activates the virtual environment and starts the server
 
-echo "🚀 Starting AIGIS Governance Backend..."
+echo "🚀 Starting AIGIS Governance Agent Gateway..."
 echo "📊 Using Google ADK framework for AI agents"
 echo "🔗 Server will be available at: http://0.0.0.0:8000 (accessible from host at http://localhost:8000)"
 echo ""

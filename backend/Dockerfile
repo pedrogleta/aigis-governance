@@ -1,20 +1,22 @@
-FROM python:3.12-slim
+FROM node:22-alpine
 
 WORKDIR /app
-ENV PYTHONUNBUFFERED=1
 
-# Install small deps used by some projects and curl for healthchecks
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl build-essential \
-    && rm -rf /var/lib/apt/lists/*
+# Copy package files
+COPY package*.json ./
 
-COPY . /app
+# Install dependencies
+RUN npm ci --only=production
 
-# Try to install package if pyproject exists; keep best-effort to avoid build failures
-RUN python -m pip install --upgrade pip setuptools wheel || true
-RUN if [ -f pyproject.toml ]; then pip install . || true; fi
+# Copy source code
+COPY . .
 
-EXPOSE 8000
+# Expose port
+EXPOSE 3001
 
-# Start using the repository's start script (expects start_server.sh to exist and be executable)
-CMD ["bash", "./start_server.sh"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3001/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
+
+# Start the service
+CMD ["npm", "start"]
