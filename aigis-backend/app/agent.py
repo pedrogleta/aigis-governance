@@ -1,28 +1,52 @@
-from langgraph.prebuilt import create_react_agent
-from langchain.chat_models import init_chat_model
-from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.graph import StateGraph, MessagesState, START, END
-from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.graph import StateGraph, START, END
+from langgraph.checkpoint.memory import MemorySaver
+from langchain_core.messages import (
+    AIMessage,
+    SystemMessage,
+)
+from langgraph.prebuilt import tools_condition, ToolNode
+from typing import cast
+from core.types import AigisState
+from tools.aigis import tools
+from core.model import qwen_llm_with_tools
+from prompts.aigis import aigis_prompt
+from dotenv import load_dotenv
 
-model = init_chat_model("deepseek-chat", model_provider="deepseek", temperature=0)
-prompt = "You are a helpful assistant"
+load_dotenv(override=True)
 
 
-def get_weather(city: str) -> str:
-    """Get weather from a given city."""
-    return f"It's always sunny in {city}"
+def check_db_schema(state: AigisState):
+    if not state["db_schema"]:
+        print("get db schema")
+        db_schema = "example"
+
+    return {"db_schema": db_schema}
 
 
-agent = create_react_agent(model=model, tools=[get_weather], prompt=prompt)
-tools = [get_weather]
+def assistant(state: AigisState):
+    db_schema = state["db_schema"]
 
-# model_with_tools = model.bind_tools(tools, parallel_tool_calls=False)
+    sys_message = SystemMessage(content=aigis_prompt.format(db_schema=db_schema))
 
-builder = StateGraph(MessagesState)
+    assistant_response = cast(
+        AIMessage, qwen_llm_with_tools.invoke([sys_message] + state["messages"])
+    )
 
+    return {"messages": [assistant_response]}
+
+
+builder = StateGraph(AigisState)
+
+builder.add_node("check_db_schema", check_db_schema)
+builder.add_node("assistant", assistant)
 builder.add_node("tools", ToolNode(tools))
 
-checkpoointer = InMemorySaver()
+builder.add_edge(START, "check_db_schema")
+builder.add_edge("check_db_schema", "assistant")
+builder.add_conditional_edges("assistant", tools_condition)
+builder.add_edge("tools", "assistant")
+builder.add_edge("assistant", END)
 
 
-# agent.invoke({"topic": "computers"})
+checkpointer = MemorySaver()
+graph = builder.compile(checkpointer=checkpointer)
