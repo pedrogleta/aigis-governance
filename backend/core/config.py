@@ -71,11 +71,13 @@ class Settings(BaseSettings):
         sqlite_path = backend_dir / self.sqlite_database_path
         return f"sqlite:///{sqlite_path}"
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
-        extra = "ignore"  # Ignore extra environment variables
+    # pydantic v2 style configuration
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "case_sensitive": False,
+        "extra": "ignore",
+    }
 
 
 # Create global settings instance

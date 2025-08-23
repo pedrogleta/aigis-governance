@@ -1,6 +1,6 @@
 from typing import cast
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -19,7 +19,7 @@ async def create_thread():
     """Create a new chat thread"""
     thread_id = str(uuid.uuid4())
     active_threads[thread_id] = {
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "messages": [],
     }
     return {"thread_id": thread_id}
@@ -36,7 +36,7 @@ async def send_message(thread_id: str, message: dict):
         {
             "sender": "user",
             "text": message.get("text", ""),
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     )
 
