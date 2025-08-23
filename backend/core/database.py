@@ -2,7 +2,7 @@
 
 # There will be a single main app connection to PostgreSQL but there will also be custom User Created database connections to SQLite.
 
-from typing import Generator, Optional
+from typing import Generator
 from sqlalchemy import create_engine, event
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session

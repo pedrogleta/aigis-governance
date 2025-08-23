@@ -5,7 +5,6 @@ Example script demonstrating how to use the database connections.
 
 import sys
 from pathlib import Path
-from datetime import datetime
 
 
 from sqlalchemy import text
