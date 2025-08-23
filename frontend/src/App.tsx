@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Database, BarChart3 } from 'lucide-react';
+import { Send, Bot, User as UserIcon, Database, BarChart3 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { apiService } from './services/api';
 import type { ChatResponse, StreamingMessage } from './services/api';
 import { StreamingMessageComponent } from './components/MessageComponents';
 import { StreamingTextComponent } from './components/MessageComponents';
+import Auth from './components/Auth';
 
 interface Message {
   id: string;
@@ -20,6 +21,13 @@ interface Message {
 }
 
 function App() {
+  const [currentUser, setCurrentUser] = useState<any | null>(
+    apiService.getCurrentUser(),
+  );
+  // If not authenticated, show auth screen
+  if (!currentUser) {
+    return <Auth onAuthSuccess={(user) => setCurrentUser(user)} />;
+  }
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -405,6 +413,20 @@ function App() {
             >
               Refresh
             </button>
+            <div className="pl-4">
+              <div className="text-xs text-gray-300">
+                {currentUser?.username || currentUser?.email}
+              </div>
+              <button
+                onClick={() => {
+                  apiService.clearAuth();
+                  setCurrentUser(null);
+                }}
+                className="text-xs text-gray-400 hover:text-gray-300 underline"
+              >
+                Logout
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -444,7 +466,7 @@ function App() {
                   )}
                 >
                   {message.type === 'user' ? (
-                    <User className="h-4 w-4" />
+                    <UserIcon className="h-4 w-4" />
                   ) : (
                     <Bot className="h-4 w-4" />
                   )}

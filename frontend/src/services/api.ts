@@ -145,6 +145,8 @@ export class ApiService {
   private appName: string;
   private userId: string;
   private sessionId: string = '';
+  private token: string | null = null;
+  private currentUser: User | null = null;
   private initialFileCount: number = 0;
 
   constructor(
@@ -156,6 +158,52 @@ export class ApiService {
     this.appName = appName;
     this.userId = userId;
     this.initializeFileCount();
+    // Load auth state from localStorage
+    try {
+      const stored = localStorage.getItem('aigis_token');
+      if (stored) this.token = stored;
+      const userJson = localStorage.getItem('aigis_user');
+      if (userJson) this.currentUser = JSON.parse(userJson);
+    } catch (e) {
+      console.warn('Failed to load auth from localStorage', e);
+    }
+  }
+
+  // Simple user type for auth responses
+  getToken() {
+    return this.token;
+  }
+
+  getCurrentUser() {
+    return this.currentUser;
+  }
+
+  private saveAuth(token: string, user: User | null) {
+    this.token = token;
+    this.currentUser = user;
+    try {
+      localStorage.setItem('aigis_token', token);
+      if (user) localStorage.setItem('aigis_user', JSON.stringify(user));
+    } catch (e) {
+      console.warn('Failed to save auth to localStorage', e);
+    }
+  }
+
+  clearAuth() {
+    this.token = null;
+    this.currentUser = null;
+    try {
+      localStorage.removeItem('aigis_token');
+      localStorage.removeItem('aigis_user');
+    } catch (e) {
+      console.warn('Failed to clear auth from localStorage', e);
+    }
+  }
+
+  private getAuthHeaders(contentType = 'application/json') {
+    const headers: Record<string, string> = { 'Content-Type': contentType };
+    if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
+    return headers;
   }
 
   // Initialize the file count from MinIO
@@ -250,7 +298,7 @@ export class ApiService {
 
       const response = await fetch(`${this.baseUrl}/run_sse`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getAuthHeaders('application/json'),
         body: JSON.stringify(payload),
         signal: controller.signal,
       });
@@ -436,7 +484,7 @@ export class ApiService {
       };
       const response = await fetch(`${this.baseUrl}/run`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getAuthHeaders('application/json'),
         body: JSON.stringify(payload),
       });
       if (!response.ok) {
@@ -518,7 +566,9 @@ export class ApiService {
   async getHealth(): Promise<boolean> {
     try {
       // Check if endpoint is available
-      const response = await fetch(`${this.baseUrl}/list-apps`);
+      const response = await fetch(`${this.baseUrl}/list-apps`, {
+        headers: this.getAuthHeaders(),
+      });
       return response.ok;
     } catch {
       return false;
@@ -529,13 +579,78 @@ export class ApiService {
   async checkBigQueryConnection(): Promise<boolean> {
     try {
       // Check if we can reach the ADK server by trying to list apps
-      const response = await fetch(`${this.baseUrl}/list-apps`);
+      const response = await fetch(`${this.baseUrl}/list-apps`, {
+        headers: this.getAuthHeaders(),
+      });
 
       return response.ok;
     } catch {
       return false;
     }
   }
+
+  // -----------------
+  // Authentication API
+  // -----------------
+
+  async register(payload: {
+    email: string;
+    username: string;
+    password: string;
+  }) {
+    const response = await fetch(`${this.baseUrl}/auth/register`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || `Register failed: ${response.status}`);
+    }
+    const user = await response.json();
+    return user as User;
+  }
+
+  async login(payload: { username_or_email: string; password: string }) {
+    const response = await fetch(`${this.baseUrl}/auth/login`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || `Login failed: ${response.status}`);
+    }
+    const data = await response.json();
+    const token = data?.access_token;
+    if (!token) throw new Error('No token returned from login');
+
+    // Fetch current user
+    const meResp = await fetch(`${this.baseUrl}/auth/me`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    let user: User | null = null;
+    if (meResp.ok) {
+      try {
+        user = await meResp.json();
+      } catch (e) {
+        console.warn('Failed to parse /auth/me response', e);
+      }
+    }
+
+    this.saveAuth(token, user);
+    return { token, user };
+  }
 }
 
 export const apiService = new ApiService();
+
+// Minimal user type returned by backend `/auth/me`
+export interface User {
+  id: string;
+  email?: string;
+  username?: string;
+  is_active?: boolean;
+  is_superuser?: boolean;
+}

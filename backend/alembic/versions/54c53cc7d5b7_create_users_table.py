@@ -64,18 +64,7 @@ def upgrade() -> None:
         ),
     )
 
-    # Create indexes
-    op.create_index("ix_users_id", "users", ["id"])
-    op.create_index("ix_users_email", "users", ["email"], unique=True)
-    op.create_index("ix_users_username", "users", ["username"], unique=True)
-
 
 def downgrade() -> None:
-    """Downgrade schema."""
-    # Drop indexes
-    op.drop_index("ix_users_username", "users")
-    op.drop_index("ix_users_email", "users")
-    op.drop_index("ix_users_id", "users")
-
     # Drop users table
     op.drop_table("users")
