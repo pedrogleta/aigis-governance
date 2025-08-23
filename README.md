@@ -98,7 +98,7 @@ This project uses PM2 for process management. Follow these steps to start the sy
    ```
    This will start the main application using PM2.
 
-4. **Open your browser** and navigate to `http://localhost:5173`
+4. **Open your browser** and navigate to `http://localhost:3000`
 
 ### PM2 Management Commands
 

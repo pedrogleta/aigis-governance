@@ -9,7 +9,6 @@ from opik.integrations.langchain import OpikTracer
 from app.agent import graph
 from core.types import AigisState
 
-os.environ["OPIK_URL_OVERRIDE"] = "http://localhost:5173/api"
 tracer = OpikTracer(graph=graph.get_graph(xray=True))
 
 

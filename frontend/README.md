@@ -38,7 +38,7 @@ A modern React + Vite interface for the AI Agent system that allows users to cha
    npm run dev
    ```
 
-3. Open your browser and navigate to `http://localhost:5173`
+3. Open your browser and navigate to `http://localhost:3000`
 
 ### Building for Production
 
