@@ -1,6 +1,6 @@
 import os
 from langchain.chat_models import init_chat_model
-from tools.aigis import tools
+from tools.aigis import create_tools
 
 from dotenv import load_dotenv
 
@@ -28,5 +28,14 @@ deepseek_llm = init_chat_model(
     "deepseek-chat", model_provider="deepseek", stream_usage=True, temperature=0
 )
 
+# Create a simple registry of models to pass into tool factories
+models = {
+    "qwen": qwen_llm,
+    "gpt_oss": gpt_oss_llm,
+    "deepseek": deepseek_llm,
+}
+
+# Create tools at runtime (no circular imports) and expose them
+tools = create_tools(models)
 
 qwen_llm_with_tools = qwen_llm.bind_tools(tools)

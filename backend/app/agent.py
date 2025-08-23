@@ -7,8 +7,7 @@ from langchain_core.messages import (
 from langgraph.prebuilt import tools_condition, ToolNode
 from typing import cast
 from core.types import AigisState
-from tools.aigis import tools
-from core.model import qwen_llm_with_tools
+from core.model import qwen_llm_with_tools, tools
 from prompts.aigis import aigis_prompt
 from dotenv import load_dotenv
 from app.helpers.user_connections import get_db_schema
