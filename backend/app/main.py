@@ -5,6 +5,8 @@ import uvicorn
 
 from app.routes.chat import router as chat_router
 from app.routes.auth import router as auth_router
+from fastapi import Depends
+from core.database import get_postgres_db
 
 load_dotenv(override=True)
 
@@ -22,6 +24,19 @@ app.add_middleware(
 # Store active threads (in production, use a proper database)
 app.include_router(chat_router)
 app.include_router(auth_router)
+
+
+@app.get("/health")
+async def health_check(db=Depends(get_postgres_db)):
+    """Basic health check. Verifies server is up and can access the Postgres DB."""
+    try:
+        # simple DB call to verify connectivity
+        list(db.execute("SELECT 1"))
+        db_status = "ok"
+    except Exception:
+        db_status = "error"
+
+    return {"status": "ok", "db": db_status}
 
 
 if __name__ == "__main__":

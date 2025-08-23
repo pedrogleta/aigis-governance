@@ -2,41 +2,69 @@ from typing import cast
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
 from langgraph.graph.state import RunnableConfig
 
 from app.utils import stream_langgraph_events
 from app.agent import graph
 from core.types import AigisState
 from app.state import active_threads
+from core.database import get_postgres_db
+from crud.thread import thread_crud
 
 router = APIRouter(prefix="/chat")
 
 
 @router.post("/thread")
-async def create_thread():
-    """Create a new chat thread"""
+async def create_thread(db: Session = Depends(get_postgres_db)):
+    """Create a new chat thread and persist to Postgres"""
     thread_id = str(uuid.uuid4())
+    created_at = datetime.now(timezone.utc)
+
+    # Persist thread
+    db_thread = thread_crud.create_thread(
+        db, thread_id=thread_id, created_at=created_at
+    )
+
+    # Keep lightweight in-memory entry for active streaming coordination
     active_threads[thread_id] = {
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": created_at.isoformat(),
         "messages": [],
     }
-    return {"thread_id": thread_id}
+
+    return {"thread_id": db_thread.thread_id}
 
 
 @router.post("/{thread_id}/message")
-async def send_message(thread_id: str, message: dict):
-    """Send a message to the AI agent and stream the response"""
-    if thread_id not in active_threads:
+async def send_message(
+    thread_id: str, message: dict, db: Session = Depends(get_postgres_db)
+):
+    """Send a message to the AI agent, persist user message, and stream the agent response"""
+    db_thread = thread_crud.get_thread_by_thread_id(db, thread_id)
+    if not db_thread:
         raise HTTPException(status_code=404, detail="Thread not found")
 
-    # Add user message to thread history
+    # Persist user message
+    timestamp = datetime.now(timezone.utc)
+    user_text = message.get("text", "")
+    thread_crud.add_message(
+        db, db_thread, sender="user", text=user_text, timestamp=timestamp
+    )
+
+    # Update in-memory history for quick access/streaming
+    if thread_id not in active_threads:
+        active_threads[thread_id] = {
+            "created_at": db_thread.created_at.isoformat(),
+            "messages": [],
+        }
+
     active_threads[thread_id]["messages"].append(
         {
             "sender": "user",
-            "text": message.get("text", ""),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "text": user_text,
+            "timestamp": timestamp.isoformat(),
         }
     )
 
@@ -45,23 +73,37 @@ async def send_message(thread_id: str, message: dict):
 
     graph_input = cast(
         AigisState,
-        {"messages": [message.get("text", "")]},
+        {"messages": [user_text]},
     )
 
     # Stream the AI response
     return StreamingResponse(
-        stream_langgraph_events(graph_input, thread_config, active_threads),
+        stream_langgraph_events(graph_input, thread_config, active_threads, db),
         media_type="text/event-stream",
     )
 
 
 @router.get("/{thread_id}")
-async def get_thread_messages(thread_id: str):
-    """Get all messages for a specific thread"""
-    if thread_id not in active_threads:
+async def get_thread_messages(thread_id: str, db: Session = Depends(get_postgres_db)):
+    """Get all messages for a specific thread (from Postgres)"""
+    db_thread = thread_crud.get_thread_by_thread_id(db, thread_id)
+    if not db_thread:
         raise HTTPException(status_code=404, detail="Thread not found")
 
-    return active_threads[thread_id]
+    # Return thread with messages
+    thread = thread_crud.get_thread_with_messages(db, db_thread)
+
+    # Convert to a simple dict structure
+    messages = [
+        {"sender": m.sender, "text": m.text, "timestamp": m.timestamp.isoformat()}
+        for m in thread.messages
+    ]
+
+    return {
+        "thread_id": thread.thread_id,
+        "created_at": thread.created_at.isoformat(),
+        "messages": messages,
+    }
 
 
 @router.get("/{thread_id}/state")

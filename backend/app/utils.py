@@ -1,5 +1,5 @@
 import json
-from typing import Literal, Tuple, cast, Dict, Any
+from typing import Literal, Tuple, cast, Dict, Any, Optional
 from langchain_core.messages import AIMessageChunk, ToolMessage
 from langgraph.graph.state import RunnableConfig
 from pydantic import BaseModel
@@ -7,6 +7,9 @@ from opik.integrations.langchain import OpikTracer
 
 from app.agent import graph
 from core.types import AigisState
+from sqlalchemy.orm import Session
+from crud.thread import thread_crud
+from datetime import datetime, timezone
 
 tracer = OpikTracer(graph=graph.get_graph(xray=True))
 
@@ -19,6 +22,7 @@ async def stream_langgraph_events(
     graph_input: AigisState,
     thread: RunnableConfig,
     active_threads: Dict[str, Any],
+    db: Optional[Session] = None,
 ):
     """
     Asynchronous generator to stream LangGraph events.
@@ -52,15 +56,24 @@ async def stream_langgraph_events(
             print(chunk.type)
             yield f"data: {json.dumps(error_msg)}\n\n"
 
-    # Store the complete AI response in thread history
+    # Store the complete AI response in thread history (in-memory)
+    ai_timestamp = datetime.now(timezone.utc)
     if thread_id in active_threads:
         active_threads[thread_id]["messages"].append(
             {
                 "sender": "ai",
                 "text": full_response,
-                "timestamp": "now",  # You might want to use proper datetime here
+                "timestamp": ai_timestamp.isoformat(),
             }
         )
+
+    # Persist AI response to DB if session provided
+    if db is not None:
+        db_thread = thread_crud.get_thread_by_thread_id(db, thread_id)
+        if db_thread:
+            thread_crud.add_message(
+                db, db_thread, sender="ai", text=full_response, timestamp=ai_timestamp
+            )
 
     # Send end signal
     end_msg = {"type": "end", "full_response": full_response}
