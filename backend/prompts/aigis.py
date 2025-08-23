@@ -29,8 +29,8 @@ You must always call the tools in this sequence. Do not call ask_analyst before 
 - Example Usage:
   - User Question: "Can you show me a bar chart of our total sales per month last year?"
   - ask_database call: ask_database(query="total sales per month for the last calendar year")
-  - Data returned from ask_database: [{"month": "Jan", "sales": 100}, {"month": "Feb", "sales": 120}, ...]
-  - ask_analyst call: ask_analyst(query="Create a bar chart of the following data: [{'month': 'Jan', 'sales': 100}, {'month': 'Feb', 'sales': 120}, ...]")
+  - Data returned from ask_database: [{{"month": "Jan", "sales": 100}}, {{"month": "Feb", "sales": 120}}, ...]
+  - ask_analyst call: ask_analyst(query="Create a bar chart of the following data: [{{'month': 'Jan', 'sales': 100}}, {{'month': 'Feb', 'sales': 120}}, ...]")
 
 # **Examples**
 Example 1: Simple Data Request

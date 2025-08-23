@@ -6,6 +6,7 @@ import type {
   TextMessage,
   PlotMessage,
   StreamingMessage,
+  ToolStreamMessage,
 } from '../services/api';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -288,6 +289,23 @@ export const PlotComponent: React.FC<{
   );
 };
 
+// Component for displaying tool result messages
+export const ToolComponent: React.FC<{ message: ToolStreamMessage }> = ({
+  message,
+}) => {
+  return (
+    <div className="bg-amber-900/20 border border-amber-700/50 rounded-lg p-4 mb-3">
+      <div className="text-sm text-amber-300 font-medium mb-2">Tool Output</div>
+      <pre className="text-xs text-amber-100 overflow-x-auto whitespace-pre-wrap">
+        {message.content}
+      </pre>
+      <div className="text-xs text-amber-400 mt-2">
+        {message.timestamp.toLocaleTimeString()}
+      </div>
+    </div>
+  );
+};
+
 // Main message component that renders the appropriate component based on message type
 export const StreamingMessageComponent: React.FC<MessageProps> = ({
   message,
@@ -302,6 +320,8 @@ export const StreamingMessageComponent: React.FC<MessageProps> = ({
       return <TextComponent message={message} isStreaming={isStreaming} />;
     case 'plot':
       return <PlotComponent message={message} />;
+    case 'tool':
+      return <ToolComponent message={message} />;
     default:
       return <div>Unknown message type</div>;
   }

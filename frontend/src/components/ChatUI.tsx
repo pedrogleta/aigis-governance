@@ -83,7 +83,7 @@ const ChatUI: React.FC = () => {
 
   useEffect(() => {
     checkConnection();
-    initializeFileCount();
+    createThread();
   }, []);
 
   const checkConnection = async () => {
@@ -99,11 +99,11 @@ const ChatUI: React.FC = () => {
     }
   };
 
-  const initializeFileCount = async () => {
+  const createThread = async () => {
     try {
-      await apiService.ensureSession();
+      await apiService.ensureThread();
     } catch (error) {
-      console.error('Error initializing MinIO file count:', error);
+      console.error('Error creating chat thread:', error);
     }
   };
 
@@ -558,7 +558,7 @@ const ChatUI: React.FC = () => {
                   type="text"
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
-                  placeholder="Ask me anything about your BigQuery dataset... (e.g., 'Show me sales trends for Q4' or 'Create a scatter plot of revenue vs. customers')"
+                  placeholder="Ask me anything..."
                   className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                   disabled={
                     isLoading ||

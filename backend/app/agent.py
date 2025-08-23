@@ -16,11 +16,12 @@ load_dotenv(override=True)
 
 
 def check_db_schema(state: AigisState):
-    if not state["db_schema"]:
+    if "db_schema" not in state:
         print("get db schema")
         db_schema = "example"
+        return {"db_schema": db_schema}
 
-    return {"db_schema": db_schema}
+    return {}
 
 
 def assistant(state: AigisState):

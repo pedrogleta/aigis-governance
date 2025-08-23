@@ -1,78 +1,11 @@
-// ADK API Service for chat and session management
-import { z } from 'zod';
-import { MinioService } from './minio';
+// API Service for chat and session management (FastAPI + LangGraph)
 
-// Zod schemas for streaming responses
-const FunctionCallSchema = z.object({
-  id: z.string(),
-  args: z.record(z.string(), z.unknown()),
-  name: z.string(),
-});
-
-const FunctionResponseSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  response: z.object({
-    result: z.string(),
-  }),
-});
-
-const PartSchema = z.union([
-  z.object({ text: z.string() }),
-  z.object({ functionCall: FunctionCallSchema }),
-  z.object({ functionResponse: FunctionResponseSchema }),
-]);
-
-const ContentSchema = z.object({
-  parts: z.array(PartSchema),
-  role: z.string(),
-});
-
-const UsageMetadataSchema = z.object({
-  candidatesTokenCount: z.number().optional(),
-  candidatesTokensDetails: z
-    .array(
-      z.object({
-        modality: z.string(),
-        tokenCount: z.number(),
-      }),
-    )
-    .optional(),
-  promptTokenCount: z.number().optional(),
-  promptTokensDetails: z
-    .array(
-      z.object({
-        modality: z.string(),
-        tokenCount: z.number(),
-      }),
-    )
-    .optional(),
-  thoughtsTokenCount: z.number().optional(),
-  totalTokenCount: z.number().optional(),
-  trafficType: z.string().optional(),
-});
-
-const ActionsSchema = z.object({
-  stateDelta: z.record(z.string(), z.unknown()).optional(),
-  artifactDelta: z.record(z.string(), z.unknown()).optional(),
-  requestedAuthConfigs: z.record(z.string(), z.unknown()).optional(),
-});
-
-// Schema for content messages (with content.parts)
-const ContentMessageSchema = z.object({
-  content: ContentSchema,
-  usageMetadata: UsageMetadataSchema.optional(),
-  invocationId: z.string().optional(),
-  author: z.string().optional(),
-  actions: ActionsSchema.optional(),
-  longRunningToolIds: z.array(z.string()).optional(),
-  id: z.string(),
-  timestamp: z.number(),
-  partial: z.boolean().optional(),
-});
-
-// Union schema for all possible SSE message types
-const SSEMessageSchema = ContentMessageSchema;
+// Simple backend SSE payload type
+type BackendSSE =
+  | { type: 'chunk'; content: string }
+  | { type: 'tool_result'; content: string }
+  | { type: 'end'; full_response: string }
+  | { type: 'error'; error: string };
 
 export interface ChatRequest {
   message: string;
@@ -123,41 +56,27 @@ export interface PlotMessage {
   timestamp: Date;
 }
 
+export interface ToolStreamMessage {
+  type: 'tool';
+  content: string;
+  timestamp: Date;
+}
+
 export type StreamingMessage =
   | FunctionCallMessage
   | FunctionResponseMessage
   | TextMessage
-  | PlotMessage;
-
-const CreateSessionResponseSchema = z.object({
-  id: z.uuid(),
-  appName: z.string(),
-  userId: z.string(),
-  state: z.record(z.string(), z.unknown()),
-  events: z.array(z.unknown()),
-  lastUpdateTime: z.number(),
-});
-
-// type CreateSessionResponse = z.infer<typeof CreateSessionResponseSchema>;
+  | PlotMessage
+  | ToolStreamMessage;
 
 export class ApiService {
   private baseUrl: string;
-  private appName: string;
-  private userId: string;
-  private sessionId: string = '';
+  private threadId: string = '';
   private token: string | null = null;
   private currentUser: User | null = null;
-  private initialFileCount: number = 0;
 
-  constructor(
-    baseUrl: string = 'http://localhost:8000',
-    appName = 'data_science',
-    userId = 'u_123',
-  ) {
+  constructor(baseUrl: string = 'http://localhost:8000') {
     this.baseUrl = baseUrl;
-    this.appName = appName;
-    this.userId = userId;
-    this.initializeFileCount();
     // Load auth state from localStorage
     try {
       const stored = localStorage.getItem('aigis_token');
@@ -206,73 +125,21 @@ export class ApiService {
     return headers;
   }
 
-  // Initialize the file count from MinIO
-  private async initializeFileCount(): Promise<void> {
-    try {
-      await MinioService.ensureBucket();
-      this.initialFileCount = await MinioService.getFileCount();
-      console.log('Initial MinIO file count:', this.initialFileCount);
-    } catch (error) {
-      console.error('Error initializing file count:', error);
-      this.initialFileCount = 0;
-    }
+  // Create a new chat thread if one does not exist
+  async ensureThread(): Promise<string> {
+    if (this.threadId) return this.threadId;
+    const response = await fetch(`${this.baseUrl}/chat/thread`, {
+      method: 'POST',
+      headers: this.getAuthHeaders('application/json'),
+    });
+    if (!response.ok) throw new Error('Failed to create thread');
+    const data = (await response.json()) as { thread_id?: string };
+    if (!data.thread_id) throw new Error('Invalid thread response');
+    this.threadId = data.thread_id;
+    return this.threadId;
   }
 
-  // Get the current file count from MinIO
-  async getCurrentFileCount(): Promise<number> {
-    try {
-      return await MinioService.getFileCount();
-    } catch (error) {
-      console.error('Error getting current file count:', error);
-      return this.initialFileCount;
-    }
-  }
-
-  // Check if new files were added and get the latest one
-  async checkForNewFiles(): Promise<string | null> {
-    try {
-      const currentCount = await this.getCurrentFileCount();
-      if (currentCount > this.initialFileCount) {
-        // New files were added, get the latest one
-        const latestFile = await MinioService.getLatestFile();
-        if (latestFile) {
-          // Update the initial count to the current count
-          this.initialFileCount = currentCount;
-          return latestFile;
-        }
-      }
-      return null;
-    } catch (error) {
-      console.error('Error checking for new files:', error);
-      return null;
-    }
-  }
-
-  // Create a new session if one does not exist
-  async ensureSession(): Promise<string> {
-    if (this.sessionId) return this.sessionId;
-    // Create session
-    const response = await fetch(
-      `${this.baseUrl}/apps/${this.appName}/users/${this.userId}/sessions`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      },
-    );
-    if (!response.ok) throw new Error('Failed to create session');
-    const data = await response.json();
-
-    try {
-      const createSessionResponse = CreateSessionResponseSchema.parse(data);
-      return createSessionResponse.id;
-    } catch (error) {
-      console.error('API response did not match expected schema:', error);
-      throw new Error('Invalid data received from server');
-    }
-  }
-
-  // Send a chat message to the ADK agent with streaming support
+  // Send a chat message to the agent with streaming support
   async sendMessageStreaming(
     message: string,
     onChunk: (chunk: StreamingMessage) => void,
@@ -280,23 +147,14 @@ export class ApiService {
     onError: (error: string) => void,
   ): Promise<void> {
     try {
-      const sessionId = await this.ensureSession();
-      const payload = {
-        app_name: this.appName,
-        user_id: this.userId,
-        session_id: sessionId,
-        new_message: {
-          role: 'user',
-          parts: [{ text: message }],
-        },
-        streaming: true,
-      };
+      const threadId = await this.ensureThread();
+      const payload = { text: message };
 
       // Add timeout to the fetch request
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-      const response = await fetch(`${this.baseUrl}/run_sse`, {
+      const response = await fetch(`${this.baseUrl}/chat/${threadId}/message`, {
         method: 'POST',
         headers: this.getAuthHeaders('application/json'),
         body: JSON.stringify(payload),
@@ -316,7 +174,6 @@ export class ApiService {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
-      const plots: string[] = [];
       let finalTextContent = '';
 
       try {
@@ -334,109 +191,33 @@ export class ApiService {
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               try {
-                const data = JSON.parse(line.slice(6));
+                const data: BackendSSE = JSON.parse(line.slice(6));
+                const timestamp = new Date();
 
-                // Validate the data with Zod schema
-                const validatedData = SSEMessageSchema.parse(data);
-
-                // Only process messages that have actual content to display
-                if (
-                  'content' in validatedData &&
-                  validatedData.content &&
-                  validatedData.content.parts
+                if (data.type === 'chunk' && typeof data.content === 'string') {
+                  const textMessage: TextMessage = {
+                    type: 'text',
+                    content: data.content,
+                    partial: true,
+                    timestamp,
+                  };
+                  onChunk(textMessage);
+                  finalTextContent += data.content;
+                } else if (
+                  data.type === 'tool_result' &&
+                  typeof data.content === 'string'
                 ) {
-                  console.log('Processing content message:', validatedData);
-                  // This is a content message with parts - we know these fields exist due to schema validation
-                  const contentData = validatedData as z.infer<
-                    typeof ContentMessageSchema
-                  >;
-                  const timestamp = new Date(contentData.timestamp * 1000);
-                  const isPartial = contentData.partial === true;
-
-                  // Process each part
-                  for (const part of validatedData.content.parts) {
-                    if ('text' in part && part.text) {
-                      // Only display text chunks when they're partial (streaming)
-                      // When partial: false, the backend sends the complete message again,
-                      // so we don't want to display it as a duplicate chunk
-                      if (isPartial) {
-                        console.log(
-                          'Processing text part:',
-                          part.text,
-                          'partial:',
-                          isPartial,
-                        );
-                        const textMessage: TextMessage = {
-                          type: 'text',
-                          content: part.text,
-                          partial: true,
-                          timestamp,
-                        };
-                        onChunk(textMessage);
-
-                        finalTextContent += part.text;
-                        console.log(
-                          'Accumulated final text:',
-                          finalTextContent,
-                        );
-                      }
-                    } else if ('functionCall' in part) {
-                      console.log(
-                        'Processing function call:',
-                        part.functionCall,
-                      );
-                      const functionCallMessage: FunctionCallMessage = {
-                        type: 'functionCall',
-                        id: part.functionCall.id,
-                        name: part.functionCall.name,
-                        args: part.functionCall.args,
-                        timestamp,
-                      };
-                      onChunk(functionCallMessage);
-                    } else if ('functionResponse' in part) {
-                      console.log(
-                        'Processing function response:',
-                        part.functionResponse,
-                      );
-                      const functionResponseMessage: FunctionResponseMessage = {
-                        type: 'functionResponse',
-                        id: part.functionResponse.id,
-                        name: part.functionResponse.name,
-                        result: part.functionResponse.response.result,
-                        timestamp,
-                      };
-                      onChunk(functionResponseMessage);
-
-                      // Check if new plots were generated
-                      try {
-                        const newFile = await this.checkForNewFiles();
-                        if (newFile) {
-                          console.log('New plot file detected:', newFile);
-                          // Create a plot message to display the image
-                          const plotMessage: PlotMessage = {
-                            type: 'plot',
-                            filename: newFile,
-                            timestamp,
-                          };
-                          onChunk(plotMessage);
-                        }
-                      } catch (error) {
-                        console.error('Error checking for new plots:', error);
-                      }
-                    }
-                  }
+                  const toolMessage: ToolStreamMessage = {
+                    type: 'tool',
+                    content: data.content,
+                    timestamp,
+                  };
+                  onChunk(toolMessage);
+                } else if (data.type === 'end') {
+                  // Ignore here, handled after loop
+                } else if (data.type === 'error') {
+                  onError(data.error || 'Unknown streaming error');
                 }
-
-                // Handle artifacts if they exist
-                // if (
-                //   validatedData.actions &&
-                //   validatedData.actions.artifactDelta
-                // ) {
-                //   console.log(
-                //     'Artifacts found:',
-                //     validatedData.actions.artifactDelta,
-                //   );
-                // }
               } catch (parseError) {
                 console.warn('Failed to parse SSE data:', line, parseError);
               }
@@ -451,8 +232,8 @@ export class ApiService {
       if (finalTextContent.trim()) {
         onComplete({
           content: finalTextContent,
-          plots,
-          sessionId: sessionId,
+          plots: [],
+          sessionId: threadId,
         });
       }
     } catch (error: unknown) {
@@ -469,95 +250,30 @@ export class ApiService {
     }
   }
 
-  // Send a chat message to the ADK agent (non-streaming)
+  // Send a chat message to the agent (non-streaming by aggregating SSE)
   async sendMessage(message: string): Promise<ChatResponse> {
     try {
-      const sessionId = await this.ensureSession();
-      const payload = {
-        app_name: this.appName,
-        user_id: this.userId,
-        session_id: sessionId,
-        new_message: {
-          role: 'user',
-          parts: [{ text: message }],
+      const threadId = await this.ensureThread();
+      // Use the streaming endpoint and aggregate
+      let aggregated = '';
+      await this.sendMessageStreaming(
+        message,
+        (chunk) => {
+          if (chunk.type === 'text' && chunk.partial)
+            aggregated += chunk.content;
         },
-      };
-      const response = await fetch(`${this.baseUrl}/run`, {
-        method: 'POST',
-        headers: this.getAuthHeaders('application/json'),
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
-
-      // Parse ADK API response - it returns an array of objects
-      let content = '';
-      const plots: string[] = [];
-
-      if (Array.isArray(data) && data.length > 0) {
-        // Look for the content object (usually the second one with role: "model")
-        const contentObject = data.find((item: Record<string, unknown>) => {
-          const content = item.content;
-          return (
-            content &&
-            typeof content === 'object' &&
-            content !== null &&
-            'parts' in content &&
-            Array.isArray((content as Record<string, unknown>).parts)
-          );
-        });
-
-        if (
-          contentObject &&
-          typeof contentObject.content === 'object' &&
-          contentObject.content &&
-          'parts' in contentObject.content &&
-          Array.isArray(
-            (contentObject.content as Record<string, unknown>).parts,
-          )
-        ) {
-          // Extract text from all parts
-          const parts = (contentObject.content as Record<string, unknown>)
-            .parts as Array<Record<string, unknown>>;
-          content = parts
-            .map((part: Record<string, unknown>) =>
-              typeof part === 'object' && part && 'text' in part
-                ? String(part.text || '')
-                : '',
-            )
-            .filter((text: string) => text.trim())
-            .join('\n');
-        }
-
-        // Look for any artifacts or additional data in the response
-        // This might need to be adjusted based on actual response structure
-        if (
-          contentObject &&
-          contentObject.actions &&
-          contentObject.actions.artifactDelta
-        ) {
-          // Handle artifacts if they exist
-          console.log('Artifacts found:', contentObject.actions.artifactDelta);
-        }
-      } else if (typeof data === 'string') {
-        content = data;
-      } else {
-        content = 'No response content found';
-        console.warn('Unexpected response format:', data);
-      }
-      return {
-        content,
-        plots,
-        sessionId: sessionId,
-      };
+        () => {},
+        (err) => {
+          throw new Error(err);
+        },
+      );
+      return { content: aggregated, plots: [], sessionId: threadId };
     } catch (error: unknown) {
       console.error('API Error:', error);
       return {
         content: '',
         plots: [],
-        sessionId: this.sessionId || '',
+        sessionId: this.threadId || '',
         error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
@@ -566,7 +282,7 @@ export class ApiService {
   async getHealth(): Promise<boolean> {
     try {
       // Check if endpoint is available
-      const response = await fetch(`${this.baseUrl}/list-apps`, {
+      const response = await fetch(`${this.baseUrl}/health`, {
         headers: this.getAuthHeaders(),
       });
       return response.ok;
@@ -578,8 +294,8 @@ export class ApiService {
   // Method to check if BigQuery connection is available
   async checkBigQueryConnection(): Promise<boolean> {
     try {
-      // Check if we can reach the ADK server by trying to list apps
-      const response = await fetch(`${this.baseUrl}/list-apps`, {
+      // For now, use the same health endpoint
+      const response = await fetch(`${this.baseUrl}/health`, {
         headers: this.getAuthHeaders(),
       });
 
