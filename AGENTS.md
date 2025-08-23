@@ -1,24 +1,17 @@
-# Google ADK API Server - Key Endpoints & Usage
+# Aigis Backend - Key Endpoints & Usage (FastAPI)
 
-This file summarizes the most important endpoints and payloads for the Google ADK API server (adk api_server), based on the provided documentation.
+This file documents the current backend API and important endpoints for the custom FastAPI backend (replaces the previous Google ADK api_server). It includes auth, chat (SSE streaming), and database notes.
 
 ## Key Endpoints
 
-### Session & App Management
-- `GET /list-apps`
-  - Lists all available apps
+### Thread & Chat Endpoints
+- `POST /chat/thread` - Create a new chat thread. Returns `{"thread_id": "<uuid>"}`.
 
-- `GET /apps/{app_name}/users/{user_id}/sessions/{session_id}`
-  - Get a specific session
+- `POST /chat/{thread_id}/message` - Send a message to a thread. Accepts a JSON body `{ "text": "..." }` and returns an SSE stream (media type `text/event-stream`) with incremental agent events.
 
-- `POST /apps/{app_name}/users/{user_id}/sessions/{session_id}`
-  - Create a session with a specific ID
+- `GET /chat/{thread_id}` - Get the message history and metadata for a thread.
 
-- `GET /apps/{app_name}/users/{user_id}/sessions`
-  - List all sessions for a user
-
-- `POST /apps/{app_name}/users/{user_id}/sessions`
-  - Create a new session (ID auto-generated)
+- `GET /chat/{thread_id}/state` - Retrieve the current agent/graph state for a thread (e.g., DB schema info) and thread status.
 
 ### Artifact Management
 - `GET /apps/{app_name}/users/{user_id}/sessions/{session_id}/artifacts/{artifact_name}`
@@ -31,41 +24,7 @@ This file summarizes the most important endpoints and payloads for the Google AD
   - List all artifact names for a session
 
 ### Agent Interaction
-- `POST /run`
-  - Run an agent (main chat/interaction endpoint) - **NOT USED IN CURRENT IMPLEMENTATION**
-  - **Payload Example:**
-    ```json
-    {
-      "app_name": "data_science",
-      "user_id": "u_123",
-      "session_id": "s_abc",
-      "new_message": {
-        "role": "user",
-        "parts": [
-          { "text": "What is the capital of France?" }
-        ]
-      }
-    }
-    ```
-
-- `POST /run_sse` ⭐ **CURRENTLY USED ENDPOINT**
-  - Run agent with Server-Sent Events (for streaming responses)
-  - **Payload Example:**
-    ```json
-    {
-      "app_name": "data_science",
-      "user_id": "u_123",
-      "session_id": "s_abc",
-      "new_message": {
-        "role": "user",
-        "parts": [
-          { "text": "What is the capital of France?" }
-        ]
-      },
-      "streaming": true
-    }
-    ```
-  - **Response Format:** Server-Sent Events (SSE) with JSON data chunks containing various message types
+The previous ADK endpoints (`/run`, `/run_sse`, etc.) are no longer used. The FastAPI chat routes above provide thread-based interaction and SSE streaming.
   - **Sample Response Structure:**
     ```
     data: {"content":{"parts":[{"text":"I have access to the following tables..."}],"role":"model"},"partial":true}
@@ -78,7 +37,6 @@ This file summarizes the most important endpoints and payloads for the Google AD
     - **Function Responses:** Tool execution results with function name and response data
     - **Invocation Metadata:** Session tracking with `invocationId`, `author`, and `actions`
 
-## Current Implementation Details
 
 ### Frontend (React + TypeScript)
 - **Location:** `frontend/src/`
@@ -88,65 +46,37 @@ This file summarizes the most important endpoints and payloads for the Google AD
   - `components/MessageComponents.tsx` - Message type-specific rendering components
   - `index.css` - Styling with streaming animations and indicators
 
-### Agent Gateway (Google ADK Framework)
-- **Location:** `agent-gateway/`
-- **Server:** Started via `start_gateway.sh` using `adk api_server`
-- **Port:** http://localhost:8000
-- **Framework:** Google ADK (Agent Development Kit)
-- **Purpose:** Handles all agent interactions, session management, and artifact operations
+### Backend (FastAPI)
+- **Location:** `backend/` (Python FastAPI app under `backend/app`)
+- **Server:** Run with `uvicorn app.main:app --reload` (development)
+- **Purpose:** Authentication, chat/streaming, database connections (Postgres primary, SQLite per-user DBs)
 
-### Backend (File Management Microservice)
-- **Location:** `backend/`
-- **Purpose:** General backend services including file storage and retrieval
-- **Key Functionality:** MinIO file management operations
-- **Architecture:** Microservice architecture separate from agent functionality
+There is no longer a separate `agent-gateway/` ADK server in the canonical runtime for this repository; agent logic is orchestrated inside the FastAPI app and associated modules.
+
 
 ### SSE Implementation Features
-- **Real-time Streaming:** Messages appear as they're generated
-- **Multi-message Support:** Displays function calls, function responses, and text in sequence
-- **Message Type Differentiation:** Visual distinction between different message types
-- **Visual Indicators:** Typing, streaming, and completion states
-- **Error Handling:** Retry functionality and graceful error display
-- **Audio Feedback:** Subtle notification sounds
-- **Progress Tracking:** Character count and response timing
-- **Timeout Protection:** 30-second request timeout
+- **Real-time Streaming:** Chat responses are streamed as Server-Sent Events from `/chat/{thread_id}/message`.
+- **Multi-message Support:** The stream can include function/tool calls and tool responses as separate events before the final text content.
+- **Message Type Differentiation:** Frontend distinguishes between function calls, function responses, and text parts.
 
 ## Project Structure Overview
 
 ```
 aigis-governance/
 ├── frontend/                          # React frontend application
-│   ├── src/
-│   │   ├── App.tsx                   # Main chat interface
-│   │   ├── services/
-│   │   │   └── api.ts                # API service with SSE support and Zod validation
-│   │   ├── components/
-│   │   │   └── MessageComponents.tsx # Message type-specific rendering components
-│   │   ├── lib/
-│   │   │   └── utils.ts              # Utility functions
-│   │   ├── assets/                   # Static assets
-│   │   ├── index.css                 # Global styles and animations
-│   │   └── main.tsx                  # App entry point
-│   ├── package.json                  # Frontend dependencies
-│   ├── vite.config.ts                # Vite build configuration
-│   └── tailwind.config.js            # Tailwind CSS configuration
-├── agent-gateway/                     # Google ADK agent gateway
-│   ├── data_science/                 # Data science agent implementation
-│   │   ├── agent.py                  # Main agent logic
-│   │   ├── prompts.py                # Prompt templates
-│   │   ├── tools.py                  # Agent tools
-│   │   └── sub_agents/               # Specialized sub-agents
-│   ├── start_gateway.sh              # Gateway startup script
-│   ├── pyproject.toml                # Python dependencies
-│   └── .venv/                        # Python virtual environment
-├── backend/                           # File management microservice
-│   ├── [file management services]    # MinIO operations and general backend functionality
-│   └── [microservice configuration]  # Service configuration and setup
-├── docs/                             # Documentation
-│   └── sample-sse-response           # Sample SSE response for reference
-├── AGENTS.md                         # This file - API documentation
-├── README.md                         # Project overview
-└── SETUP.md                          # Setup instructions
+│   └── src/
+├── backend/                           # FastAPI backend (Python)
+│   ├── app/
+│   │   ├── main.py                    # FastAPI app entry
+│   │   ├── routes/
+│   │   │   ├── auth.py               # Auth endpoints
+│   │   │   └── chat.py               # Chat endpoints + SSE
+│   └── core/
+│       └── database.py                # Database manager (Postgres + SQLite)
+├── docs/
+├── AGENTS.md                          # This file - API documentation
+├── README.md                          # Project overview
+└── SETUP.md                           # Setup instructions
 ```
 
 ## Development Workflow
@@ -345,24 +275,11 @@ A typical conversation flow might include:
 
 ## Future Enhancements
 
-### Potential Improvements
-- **Connection Recovery:** Auto-reconnect on connection loss
-- **Message Persistence:** Save chat history locally
-- **Streaming Controls:** Pause/resume streaming
-- **Advanced Analytics:** Response time tracking and optimization
-- **Multi-language Support:** Internationalization for UI
-- **Message Type Filtering:** User preferences for which message types to display
-- **Custom Message Components:** User-defined styling for different message types
-- **Message Search:** Search through chat history by message type or content
-
-### Monitoring & Debugging
-- **SSE Connection Logs:** Detailed connection status logging
-- **Message Processing Logs:** Console logging for each message type processed
-- **Performance Metrics:** Response time and throughput tracking
-- **Error Analytics:** Error categorization and frequency analysis
-- **User Experience Metrics:** Streaming success rates and user satisfaction
-- **Message Type Analytics:** Tracking of function calls, responses, and text message frequencies
+- Connection recovery and auto-reconnect on the frontend
+- Message persistence and server-side history storage (currently in-memory threads)
+- Per-thread persistence backed by PostgreSQL
+- Better instrumentation and observability for SSE streams
 
 ---
 
-**Keep this file updated as the ADK API server and project structure evolve!**
+Keep this file updated as the backend and project structure evolve.

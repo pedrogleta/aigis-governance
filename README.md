@@ -113,21 +113,30 @@ npm run cleanup   # Stop and remove all PM2 processes
 
 
 
-## Frontend Development
+## Backend Development
 
-The React frontend is located in the `frontend/` directory and provides:
+The project now uses a custom FastAPI backend (replacing the previous Google ADK api_server). The backend provides authentication, chat endpoints (SSE streaming), and connections to both PostgreSQL (primary) and user-created SQLite databases.
 
-- 🎨 **Dark & Green Theme** - Modern, professional interface
-- 💬 **Real-time Chat** - Interactive chat with AI agents
-- 📊 **Data Visualization** - Display generated plots and charts
-- 💻 **Code Display** - Syntax-highlighted analysis scripts
-- 🔄 **Session Management** - Persistent chat sessions
+Key backend locations:
 
-### Frontend Commands
+- `backend/app/main.py` - FastAPI application entrypoint
+- `backend/app/routes/auth.py` - Authentication endpoints (register, login, user management)
+- `backend/app/routes/chat.py` - Chat/thread endpoints and SSE streaming
+- `backend/core/database.py` - Database manager and FastAPI DB dependencies (Postgres + SQLite)
+
+### Backend Commands (development)
+
+Use one of the following from the `backend/` directory to run the server for development:
 
 ```bash
-cd frontend
-npm install          # Install dependencies
+# Run with uvicorn (module path)
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# Or run via python (calls uvicorn inside main)
+python -m backend.app.main
+```
+
+Note: There used to be a `start_server.sh` reference in older docs; the current recommended dev command is `uvicorn app.main:app --reload` from the `backend/` folder.
 npm run dev         # Start development server
 npm run build       # Build for production
 npm run preview     # Preview production build
