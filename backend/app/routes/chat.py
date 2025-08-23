@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from langgraph.graph.state import RunnableConfig
 
-from app.utils import stream_langgraph_events
+from app.helpers.langgraph import stream_langgraph_events
 from app.agent import graph
 from core.types import AigisState
 from app.state import active_threads

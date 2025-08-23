@@ -11,31 +11,15 @@ from tools.aigis import tools
 from core.model import qwen_llm_with_tools
 from prompts.aigis import aigis_prompt
 from dotenv import load_dotenv
-from core.database import get_sqlite_engine
-from sqlalchemy import inspect
+from app.helpers.user_connections import get_db_schema
+
 
 load_dotenv(override=True)
 
 
 def check_db_schema(state: AigisState):
     if "db_schema" not in state:
-        engine = get_sqlite_engine()
-        inspector = inspect(engine)
-        try:
-            tables = inspector.get_table_names()
-        except Exception:
-            # Fallback: query sqlite_master directly if inspector fails
-            tables = []
-            try:
-                with engine.connect() as conn:
-                    result = conn.execute(
-                        "SELECT name FROM sqlite_master WHERE type='table';"
-                    )
-                    tables = [row[0] for row in result]
-            except Exception:
-                tables = []
-
-        db_schema = ", ".join(tables) if tables else ""
+        db_schema = get_db_schema()
         return {"db_schema": db_schema}
 
     return {}
