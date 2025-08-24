@@ -7,7 +7,7 @@ from langchain_core.messages import (
 from langgraph.prebuilt import tools_condition, ToolNode
 from typing import cast
 from core.types import AigisState
-from llm.model import qwen_llm_with_tools, tools
+from llm.model import qwen_llm_with_tools, tools, gpt_oss_llm_with_tools
 from llm.prompts import aigis_prompt
 from dotenv import load_dotenv
 
@@ -24,7 +24,7 @@ def assistant(state: AigisState):
     )
 
     assistant_response = cast(
-        AIMessage, qwen_llm_with_tools.invoke([sys_message] + state["messages"])
+        AIMessage, gpt_oss_llm_with_tools.invoke([sys_message] + state["messages"])
     )
 
     return {"messages": [assistant_response]}

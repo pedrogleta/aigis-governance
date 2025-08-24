@@ -11,7 +11,7 @@ from langgraph.prebuilt import InjectedState
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import SystemMessage, ToolMessage
 from langgraph.types import Command
-from prompts import ask_analyst_prompt, json_fixer_prompt, ask_database_prompt
+from llm.prompts import ask_analyst_prompt, json_fixer_prompt, ask_database_prompt
 
 
 def make_ask_database(model: Optional[BaseChatModel] = None):
@@ -120,8 +120,10 @@ def create_tools(models: Optional[Dict[str, Any]] = None) -> List[Any]:
     """
     models = models or {}
     qwen = models.get("qwen")
+    deepseek = models.get("deepseek")
+    gpt_oss = models.get("gpt_oss")
     # You can choose which model powers which tool; adjust as needed.
     return [
-        make_ask_database(qwen),
-        make_ask_analyst(qwen),
+        make_ask_database(gpt_oss),
+        make_ask_analyst(gpt_oss),
     ]

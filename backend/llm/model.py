@@ -39,3 +39,4 @@ models = {
 tools = create_tools(models)
 
 qwen_llm_with_tools = qwen_llm.bind_tools(tools)
+gpt_oss_llm_with_tools = gpt_oss_llm.bind_tools(tools)
