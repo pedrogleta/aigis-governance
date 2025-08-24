@@ -18,7 +18,8 @@ load_dotenv(override=True)
 
 def check_db_schema(state: AigisState):
     if "db_schema" not in state:
-        db_schema = get_db_schema()
+        connection = state.get("connection") if isinstance(state, dict) else None
+        db_schema = get_db_schema(connection=connection)
         return {"db_schema": db_schema}
 
     return {}

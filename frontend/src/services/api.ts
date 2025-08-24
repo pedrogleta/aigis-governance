@@ -153,7 +153,10 @@ export class ApiService {
   ): Promise<void> {
     try {
       const threadId = await this.ensureThread();
-      const payload = { text: message };
+      const payload = {
+        text: message,
+        user_connection: this.selectedConnection,
+      };
 
       // Add timeout to the fetch request
       const controller = new AbortController();

@@ -1,9 +1,38 @@
-from core.database import get_sqlite_engine
+from core.database import get_sqlite_engine, db_manager
 from sqlalchemy import inspect
 
 
-def get_db_schema() -> str:
-    engine = get_sqlite_engine()
+def get_db_schema(connection: dict | None = None) -> str:
+    # Determine engine based on provided connection; fallback to default sqlite engine
+    engine = None
+    if connection:
+        try:
+            user_id = connection.get("user_id")
+            connection_id = connection.get("id")
+            db_type = (connection.get("db_type") or "").lower()
+            host = connection.get("host")
+            port = connection.get("port")
+            username = connection.get("username")
+            # Password is not sent from frontend; attempt without it. If required, this will fail gracefully below.
+            password = None
+            database_name = connection.get("database_name")
+
+            if user_id is not None and connection_id is not None and db_type:
+                engine = db_manager.get_user_connection_engine(
+                    int(user_id),
+                    int(connection_id),
+                    db_type,
+                    host,
+                    int(port) if port is not None else None,
+                    username,
+                    password,
+                    database_name,
+                )
+        except Exception:
+            engine = None
+
+    if engine is None:
+        engine = get_sqlite_engine()
     if engine is None:
         return ""
     inspector = inspect(engine)

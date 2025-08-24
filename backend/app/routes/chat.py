@@ -49,6 +49,8 @@ async def send_message(
     # Persist user message
     timestamp = datetime.now(timezone.utc)
     user_text = message.get("text", "")
+    # Optional user-selected connection from frontend
+    user_connection = message.get("user_connection")
     thread_crud.add_message(
         db, db_thread, sender="user", text=user_text, timestamp=timestamp
     )
@@ -73,7 +75,7 @@ async def send_message(
 
     graph_input = cast(
         AigisState,
-        {"messages": [user_text]},
+        {"messages": [user_text], "connection": user_connection},
     )
 
     # Stream the AI response
