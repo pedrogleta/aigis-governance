@@ -339,43 +339,15 @@ export const ToolComponent: React.FC<{ message: ToolStreamMessage }> = ({
       vegaLiteSpec = specField;
     }
   }
-  console.log('vegaLiteSpec');
-  console.log(JSON.stringify(vegaLiteSpec));
-
-  // Ensure the visualization is responsive and not tiny
-  const makeResponsiveVegaSpec = (spec: any) => {
-    const next: any = { ...spec };
-    // Fill container width
-    next.width = 'container';
-    // Make it fit the parent while respecting padding
-    if (next.autosize && typeof next.autosize === 'object') {
-      next.autosize = { type: 'fit', contains: 'padding', ...next.autosize };
-    } else {
-      next.autosize = { type: 'fit', contains: 'padding' };
-    }
-    // Provide a sensible default height if missing or too small
-    if (typeof next.height !== 'number' || next.height < 320) {
-      next.height = 420;
-    }
-    return next;
-  };
-
-  const finalVegaSpec = vegaLiteSpec
-    ? makeResponsiveVegaSpec(vegaLiteSpec)
-    : null;
-  console.log('finalVegaSpec');
-  console.log(JSON.stringify(finalVegaSpec));
 
   return (
     <div className="bg-amber-900/20 border border-amber-700/50 rounded-lg p-4 mb-3">
       <div className="text-sm text-amber-300 font-medium mb-2">Tool Output</div>
 
-      {finalVegaSpec ? (
+      {vegaLiteSpec ? (
         <div className="bg-gray-900 border border-gray-800 rounded-md p-3">
           <div className="w-full flex justify-center">
-            <div className="w-full max-w-4xl">
-              <VegaLite spec={finalVegaSpec} actions={false} />
-            </div>
+            <VegaLite spec={vegaLiteSpec} actions={false} />
           </div>
         </div>
       ) : (
