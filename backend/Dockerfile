@@ -22,8 +22,15 @@ RUN pip install --no-cache-dir uv \
 # Copy application code
 COPY . /app
 
+# Install entrypoint script to a stable path not affected by bind mounts
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
 # Expose port
 EXPOSE 8000
 
-# Run the app using `uv run` so it executes inside the uv-managed venv
-CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Use an entrypoint that runs migrations first, then starts the app
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+
+# Default CMD can be overridden by docker-compose or `docker run`
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
