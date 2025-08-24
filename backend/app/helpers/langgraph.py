@@ -5,7 +5,7 @@ from langgraph.graph.state import RunnableConfig
 from pydantic import BaseModel
 from opik.integrations.langchain import OpikTracer
 
-from app.agent import graph
+from llm.agent import graph
 from core.types import AigisState
 from sqlalchemy.orm import Session
 from crud.thread import thread_crud
