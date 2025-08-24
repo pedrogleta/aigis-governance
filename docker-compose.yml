@@ -50,6 +50,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       MINIO_ENDPOINT: minio:9000
+      LM_STUDIO_ENDPOINT: ${LM_STUDIO_ENDPOINT:-http://0.0.0.0:1234}
       ENABLE_OPIK_TRACER: ${ENABLE_OPIK_TRACER:-0}
     volumes:
       - ./backend:/app
