@@ -262,7 +262,7 @@ const ConnectionsSidebar: React.FC<Props> = ({
                         onChange={() => onSelect(c)}
                         onClick={(e) => e.stopPropagation()}
                         aria-label={`Select connection ${c.name}`}
-                        className="h-4 w-4 text-green-600 bg-gray-800 border-gray-700"
+                        className="h-4 w-4 mr-3 accent-green-500 bg-gray-800 border-gray-700 rounded focus:ring-2 focus:ring-green-500"
                       />
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium text-white truncate">
@@ -274,27 +274,7 @@ const ConnectionsSidebar: React.FC<Props> = ({
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <button
-                        title={
-                          selectedConnection?.id === c.id
-                            ? 'Selected'
-                            : 'Select'
-                        }
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSelect(c);
-                        }}
-                        className={cn(
-                          'text-xs px-2 py-1 rounded text-gray-200 hover:bg-gray-800 transition-colors',
-                          selectedConnection?.id === c.id &&
-                            'bg-green-600 text-white',
-                        )}
-                        style={{ cursor: 'pointer' }}
-                      >
-                        {selectedConnection?.id === c.id
-                          ? 'Selected'
-                          : 'Select'}
-                      </button>
+                      {/* Select button removed: row + radio handle selection */}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
