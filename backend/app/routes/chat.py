@@ -12,6 +12,8 @@ from llm.agent import graph
 from core.types import AigisState
 from app.state import active_threads
 from core.database import get_postgres_db
+from auth.dependencies import get_current_user
+from models.user import User
 from crud.thread import thread_crud
 
 router = APIRouter(prefix="/chat")
@@ -39,7 +41,10 @@ async def create_thread(db: Session = Depends(get_postgres_db)):
 
 @router.post("/{thread_id}/message")
 async def send_message(
-    thread_id: str, message: dict, db: Session = Depends(get_postgres_db)
+    thread_id: str,
+    message: dict,
+    db: Session = Depends(get_postgres_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Send a message to the AI agent, persist user message, and stream the agent response"""
     db_thread = thread_crud.get_thread_by_thread_id(db, thread_id)
@@ -50,7 +55,7 @@ async def send_message(
     timestamp = datetime.now(timezone.utc)
     user_text = message.get("text", "")
     # Optional user-selected connection from frontend
-    user_connection = message.get("user_connection")
+    user_connection_id = message.get("user_connection_id")
     thread_crud.add_message(
         db, db_thread, sender="user", text=user_text, timestamp=timestamp
     )
@@ -73,9 +78,18 @@ async def send_message(
     # Prepare the input for the agent
     thread_config = cast(RunnableConfig, {"configurable": {"thread_id": thread_id}})
 
+    # Pass only minimal reference. Helper will resolve details with password.
     graph_input = cast(
         AigisState,
-        {"messages": [user_text], "connection": user_connection},
+        {
+            "messages": [user_text],
+            "connection": {
+                "user_id": current_user.id,
+                "connection_id": user_connection_id,
+            }
+            if user_connection_id is not None
+            else None,
+        },
     )
 
     # Stream the AI response

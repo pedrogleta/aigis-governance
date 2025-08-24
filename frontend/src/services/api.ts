@@ -155,7 +155,7 @@ export class ApiService {
       const threadId = await this.ensureThread();
       const payload = {
         text: message,
-        user_connection: this.selectedConnection,
+        user_connection_id: this.selectedConnection?.id,
       };
 
       // Add timeout to the fetch request

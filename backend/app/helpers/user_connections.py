@@ -1,33 +1,77 @@
 from core.database import db_manager
 from sqlalchemy import inspect
+from crud.connection import user_connection_crud
+from core.crypto import decrypt_secret
+from core.config import settings
 
 
 def get_db_schema(connection: dict | None = None) -> str:
-    # Determine engine based on provided connection; fallback to default sqlite engine
+    # Determine engine based on provided connection reference (user_id, connection_id)
     engine = None
     if connection:
         try:
-            user_id = connection.get("user_id")
-            connection_id = connection.get("id")
-            db_type = (connection.get("db_type") or "").lower()
-            host = connection.get("host")
-            port = connection.get("port")
-            username = connection.get("username")
-            # Password is not sent from frontend; attempt without it. If required, this will fail gracefully below.
-            password = None
-            database_name = connection.get("database_name")
+            # Prefer minimal reference { user_id, connection_id }
+            ref_user_id = connection.get("user_id")
+            ref_connection_id = connection.get("connection_id") or connection.get("id")
 
-            if user_id is not None and connection_id is not None and db_type:
-                engine = db_manager.get_user_connection_engine(
-                    int(user_id),
-                    int(connection_id),
-                    db_type,
-                    host,
-                    int(port) if port is not None else None,
-                    username,
-                    password,
-                    database_name,
-                )
+            if ref_user_id is not None and ref_connection_id is not None:
+                # Fetch full connection details from main DB and decrypt password if present
+                with db_manager.get_postgres_session_context() as db:
+                    record = user_connection_crud.get_user_connection(
+                        db,
+                        user_id=int(ref_user_id),
+                        connection_id=int(ref_connection_id),
+                    )
+
+                    if record is not None:
+                        db_type = (record.db_type or "").lower()
+                        host = record.host
+                        port = record.port
+                        username = record.username
+                        database_name = record.database_name
+                        password = None
+                        if record.encrypted_password and record.iv:
+                            try:
+                                password = decrypt_secret(
+                                    record.encrypted_password,
+                                    record.iv,
+                                    settings.master_encryption_key,
+                                )
+                            except Exception:
+                                password = None
+
+                        engine = db_manager.get_user_connection_engine(
+                            int(ref_user_id),
+                            int(ref_connection_id),
+                            db_type,
+                            host,
+                            int(port) if port is not None else None,
+                            username,
+                            password,
+                            database_name,
+                        )
+            else:
+                # Backward compatibility: full connection dict provided
+                user_id = connection.get("user_id")
+                connection_id = connection.get("id")
+                db_type = (connection.get("db_type") or "").lower()
+                host = connection.get("host")
+                port = connection.get("port")
+                username = connection.get("username")
+                password = connection.get("password")
+                database_name = connection.get("database_name")
+
+                if user_id is not None and connection_id is not None and db_type:
+                    engine = db_manager.get_user_connection_engine(
+                        int(user_id),
+                        int(connection_id),
+                        db_type,
+                        host,
+                        int(port) if port is not None else None,
+                        username,
+                        password,
+                        database_name,
+                    )
         except Exception:
             engine = None
 
