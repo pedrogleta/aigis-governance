@@ -1,6 +1,7 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from auth.dependencies import get_current_active_user
 from core.database import get_postgres_db
@@ -124,7 +125,7 @@ async def test_connection(
             database_name=record.database_name,
         )
         with engine.connect() as conn:
-            list(conn.execute("SELECT 1"))
+            list(conn.execute(text("SELECT 1")))
         return {"detail": "Connection successful"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Connection failed: {str(e)}")
