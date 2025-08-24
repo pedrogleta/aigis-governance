@@ -241,13 +241,29 @@ const ConnectionsSidebar: React.FC<Props> = ({
                 {connections.map((c) => (
                   <div
                     key={c.id}
+                    onClick={() => onSelect(c)}
+                    onKeyDown={(e: React.KeyboardEvent) => {
+                      if (e.key === 'Enter' || e.key === ' ') onSelect(c);
+                    }}
+                    tabIndex={0}
+                    role="button"
                     className={cn(
                       'border border-gray-800 rounded p-3 flex items-center justify-between space-x-3 hover:border-green-600 transition-colors',
                       selectedConnection?.id === c.id &&
                         'border-green-600 bg-gray-800',
                     )}
+                    style={{ cursor: 'pointer' }}
                   >
                     <div className="flex items-center space-x-3 min-w-0">
+                      <input
+                        type="radio"
+                        name="connection"
+                        checked={selectedConnection?.id === c.id}
+                        onChange={() => onSelect(c)}
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label={`Select connection ${c.name}`}
+                        className="h-4 w-4 text-green-600 bg-gray-800 border-gray-700"
+                      />
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium text-white truncate">
                           {c.name}
@@ -264,7 +280,10 @@ const ConnectionsSidebar: React.FC<Props> = ({
                             ? 'Selected'
                             : 'Select'
                         }
-                        onClick={() => onSelect(c)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelect(c);
+                        }}
                         className={cn(
                           'text-xs px-2 py-1 rounded text-gray-200 hover:bg-gray-800 transition-colors',
                           selectedConnection?.id === c.id &&
@@ -277,7 +296,10 @@ const ConnectionsSidebar: React.FC<Props> = ({
                           : 'Select'}
                       </button>
                       <button
-                        onClick={() => onTest(c.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onTest(c.id);
+                        }}
                         disabled={testingId === c.id}
                         className="text-xs px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-200 transition-colors"
                         style={{ cursor: 'pointer' }}
@@ -285,14 +307,20 @@ const ConnectionsSidebar: React.FC<Props> = ({
                         {testingId === c.id ? 'Testing...' : 'Test'}
                       </button>
                       <button
-                        onClick={() => onEdit(c)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEdit(c);
+                        }}
                         className="text-xs px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-200 transition-colors"
                         style={{ cursor: 'pointer' }}
                       >
                         Edit
                       </button>
                       <button
-                        onClick={() => confirmDelete(c.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          confirmDelete(c.id);
+                        }}
                         className="text-xs px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-white transition-colors"
                         style={{ cursor: 'pointer' }}
                       >
