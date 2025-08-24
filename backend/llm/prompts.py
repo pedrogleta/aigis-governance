@@ -63,4 +63,9 @@ Here is the Database Schema and sample rows to facilitate your understanding
 <db_schema>
     {db_schema}
 </db_schema>
+
+Here is the result from your latest executed query, if any
+<sql_result>
+  {sql_result}
+</sql_result>
 """

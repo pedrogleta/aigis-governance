@@ -17,8 +17,11 @@ load_dotenv(override=True)
 
 def assistant(state: AigisState):
     db_schema = state.get("db_schema", "No connection selected by the user.")
+    sql_result = state.get("sql_result", "")
 
-    sys_message = SystemMessage(content=aigis_prompt.format(db_schema=db_schema))
+    sys_message = SystemMessage(
+        content=aigis_prompt.format(db_schema=db_schema, sql_result=sql_result)
+    )
 
     assistant_response = cast(
         AIMessage, qwen_llm_with_tools.invoke([sys_message] + state["messages"])

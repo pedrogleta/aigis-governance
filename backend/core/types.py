@@ -5,3 +5,4 @@ from typing import Optional, Dict, Any
 class AigisState(MessagesState):
     db_schema: Optional[str]
     connection: Optional[Dict[str, Any]]
+    sql_result: Optional[str]

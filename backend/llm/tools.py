@@ -1,8 +1,15 @@
 from typing import Any, Dict, List, Optional, Annotated
-from langchain_core.tools import tool
+import json
+from sqlalchemy import text
+from core.database import db_manager
+from crud.connection import user_connection_crud
+from core.crypto import decrypt_secret
+from core.config import settings
+from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.prebuilt import InjectedState
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import SystemMessage, ToolMessage
+from langgraph.types import Command
 
 
 def make_ask_database(model: Optional[BaseChatModel] = None):
@@ -23,23 +30,23 @@ DO NOT respond with anything else besides just the raw SQL code.
 """
 
     @tool
-    def ask_database(query: str, state: Annotated[dict, InjectedState]):
+    def ask_database(
+        query: str,
+        tool_call_id: Annotated[str, InjectedToolCallId],
+        state: Annotated[dict, InjectedState],
+    ):
         """Consults database based on natural language query"""
 
-        if "db_schema" not in state:
-            return "Error: ask_database tool not implemented. Warn the user"
+        if "db_schema" not in state or "connection" not in state:
+            return "Error: connection not found. Warn the user."
 
         db_schema = state["db_schema"]
-
-        if "connection" not in state:
-            return "Error: ask_database tool not implemented. Warn the user"
-
         connection = state["connection"]
 
         if not model:
-            return "Error: ask_database tool not implemented. Warn the user"
+            return "Error: app configuration error. Tell the user it's an internal server error."
 
-        sql_query = model.invoke(
+        sql_query_message = model.invoke(
             [
                 SystemMessage(
                     content=ask_database_prompt.format(db_schema=db_schema, query=query)
@@ -47,10 +54,83 @@ DO NOT respond with anything else besides just the raw SQL code.
             ]
         )
 
-        # @@TODO: use db_schema from state when the tool is executed (available via LangGraph state)
-        # Optionally use `model` if provided, e.g. model.with_structured_output(...)
-        _ = model  # placeholder to avoid unused var warnings if not used yet
-        return {"status": "not-implemented", "query": query}
+        sql_query = str(sql_query_message.content)
+
+        # Execute SQL against the user's selected connection
+        sql_execution_result = ""
+
+        try:
+            conn_ref = connection
+            user_id = conn_ref.get("user_id")
+            connection_id = conn_ref.get("connection_id") or conn_ref.get("id")
+            if user_id is None or connection_id is None:
+                raise ValueError("Missing connection reference in state")
+
+            # Fetch full connection record from the main DB and decrypt password
+            with db_manager.get_postgres_session_context() as db:
+                record = user_connection_crud.get_user_connection(
+                    db, user_id=int(user_id), connection_id=int(connection_id)
+                )
+                if record is None:
+                    raise ValueError("User connection not found")
+
+                password: Optional[str] = None
+                if record.encrypted_password and record.iv:
+                    try:
+                        password = decrypt_secret(
+                            record.encrypted_password,
+                            record.iv,
+                            settings.master_encryption_key,
+                        )
+                    except Exception:
+                        password = None
+
+                engine = db_manager.get_user_connection_engine(
+                    int(user_id),
+                    int(connection_id),
+                    (record.db_type or "").lower(),
+                    record.host,
+                    int(record.port) if record.port is not None else None,
+                    record.username,
+                    password,
+                    record.database_name,
+                )
+
+            # Execute the query and serialize results
+            with engine.connect() as conn:
+                result = conn.execute(text(sql_query))
+                if hasattr(result, "returns_rows") and result.returns_rows:
+                    rows = result.mappings().fetchmany(50)
+                    data = [dict(row) for row in rows]
+                    columns = list(rows[0].keys()) if rows else []
+                    sql_execution_result = json.dumps(
+                        {"columns": columns, "rows": data}
+                    )
+                else:
+                    rowcount = getattr(result, "rowcount", None)
+                    sql_execution_result = json.dumps({"rowcount": rowcount})
+
+            return Command(
+                update={
+                    "messages": [
+                        ToolMessage(
+                            "Executed query successfully!", tool_call_id=tool_call_id
+                        )
+                    ],
+                    "sql_result": sql_execution_result,
+                }
+            )
+        except Exception as e:
+            return Command(
+                update={
+                    "messages": [
+                        ToolMessage(
+                            f"Query failed to execute. Error: {str(e)}",
+                            tool_call_id=tool_call_id,
+                        )
+                    ]
+                }
+            )
 
     return ask_database
 
