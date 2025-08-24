@@ -7,6 +7,7 @@ from sqlalchemy import inspect, text
 from crud.connection import user_connection_crud
 from core.crypto import decrypt_secret
 from core.config import settings
+from sqlalchemy import text
 
 
 def get_db_schema(connection: dict | None = None) -> str:
@@ -122,7 +123,7 @@ def get_db_schema(connection: dict | None = None) -> str:
 
                 # Fetch up to 3 sample rows
                 try:
-                    result = conn.execute(f'SELECT * FROM "{table}" LIMIT 3;')
+                    result = conn.execute(text(f'SELECT * FROM "{table}" LIMIT 3;'))
                     rows = result.fetchall()
                 except Exception:
                     rows = []

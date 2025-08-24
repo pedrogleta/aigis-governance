@@ -179,5 +179,5 @@ async def update_thread_connection(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update state: {str(e)}")
-
-    return {"ok": True}
+    current_state = graph.get_state(thread_config)
+    return {"graph_state": current_state}
