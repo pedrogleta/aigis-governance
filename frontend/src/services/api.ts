@@ -74,6 +74,7 @@ export class ApiService {
   private threadId: string = '';
   private token: string | null = null;
   private currentUser: User | null = null;
+  private selectedConnection: UserConnection | null = null;
 
   constructor(baseUrl: string = 'http://localhost:8000') {
     this.baseUrl = baseUrl;
@@ -83,6 +84,8 @@ export class ApiService {
       if (stored) this.token = stored;
       const userJson = localStorage.getItem('aigis_user');
       if (userJson) this.currentUser = JSON.parse(userJson);
+      const connJson = localStorage.getItem('aigis_selected_connection');
+      if (connJson) this.selectedConnection = JSON.parse(connJson);
     } catch (e) {
       console.warn('Failed to load auth from localStorage', e);
     }
@@ -111,9 +114,11 @@ export class ApiService {
   clearAuth() {
     this.token = null;
     this.currentUser = null;
+    this.selectedConnection = null;
     try {
       localStorage.removeItem('aigis_token');
       localStorage.removeItem('aigis_user');
+      localStorage.removeItem('aigis_selected_connection');
     } catch (e) {
       console.warn('Failed to clear auth from localStorage', e);
     }
@@ -358,6 +363,77 @@ export class ApiService {
     this.saveAuth(token, user);
     return { token, user };
   }
+
+  // -----------------
+  // Connections API
+  // -----------------
+  async listConnections(): Promise<UserConnection[]> {
+    const resp = await fetch(`${this.baseUrl}/connections/`, {
+      method: 'GET',
+      headers: this.getAuthHeaders(),
+    });
+    if (!resp.ok) throw new Error(`Failed to list connections: ${resp.status}`);
+    return (await resp.json()) as UserConnection[];
+  }
+
+  async createConnection(
+    payload: UserConnectionCreate,
+  ): Promise<UserConnection> {
+    const resp = await fetch(`${this.baseUrl}/connections/`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok)
+      throw new Error(`Failed to create connection: ${resp.status}`);
+    return (await resp.json()) as UserConnection;
+  }
+
+  async updateConnection(
+    id: number,
+    payload: UserConnectionUpdate,
+  ): Promise<UserConnection> {
+    const resp = await fetch(`${this.baseUrl}/connections/${id}`, {
+      method: 'PUT',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok)
+      throw new Error(`Failed to update connection: ${resp.status}`);
+    return (await resp.json()) as UserConnection;
+  }
+
+  async deleteConnection(id: number): Promise<void> {
+    const resp = await fetch(`${this.baseUrl}/connections/${id}`, {
+      method: 'DELETE',
+      headers: this.getAuthHeaders(),
+    });
+    if (!resp.ok)
+      throw new Error(`Failed to delete connection: ${resp.status}`);
+  }
+
+  async testConnection(id: number): Promise<boolean> {
+    const resp = await fetch(`${this.baseUrl}/connections/${id}/test`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+    });
+    return resp.ok;
+  }
+
+  getSelectedConnection(): UserConnection | null {
+    return this.selectedConnection;
+  }
+
+  setSelectedConnection(conn: UserConnection | null) {
+    this.selectedConnection = conn;
+    try {
+      if (conn)
+        localStorage.setItem('aigis_selected_connection', JSON.stringify(conn));
+      else localStorage.removeItem('aigis_selected_connection');
+    } catch (e) {
+      console.warn('Failed to persist selected connection', e);
+    }
+  }
 }
 
 export const apiService = new ApiService();
@@ -370,3 +446,28 @@ export interface User {
   is_active?: boolean;
   is_superuser?: boolean;
 }
+
+export interface UserConnection {
+  id: number;
+  user_id: number;
+  name: string;
+  db_type: 'sqlite' | 'postgres' | string;
+  host?: string | null;
+  port?: number | null;
+  username?: string | null;
+  database_name?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserConnectionCreate {
+  name: string;
+  db_type: 'sqlite' | 'postgres';
+  host?: string | null;
+  port?: number | null;
+  username?: string | null;
+  database_name?: string | null;
+  password?: string | null;
+}
+
+export type UserConnectionUpdate = Partial<UserConnectionCreate>;

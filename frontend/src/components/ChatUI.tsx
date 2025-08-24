@@ -1,7 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User as UserIcon, Database, BarChart3 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { apiService } from '../services/api';
+import {
+  apiService,
+  type UserConnection,
+  type UserConnectionCreate,
+} from '../services/api';
 import type { ChatResponse, StreamingMessage } from '../services/api';
 import {
   StreamingMessageComponent,
@@ -39,6 +43,16 @@ const ChatUI: React.FC = () => {
   const [connectionStatus, setConnectionStatus] = useState<
     'connected' | 'disconnected' | 'checking'
   >('checking');
+  const [connectionsOpen, setConnectionsOpen] = useState(false);
+  const [connections, setConnections] = useState<UserConnection[]>([]);
+  const [selectedConnection, setSelectedConnection] =
+    useState<UserConnection | null>(apiService.getSelectedConnection());
+  const [formState, setFormState] = useState<UserConnectionCreate>({
+    name: '',
+    db_type: 'postgres',
+  });
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [testingId, setTestingId] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -84,6 +98,7 @@ const ChatUI: React.FC = () => {
   useEffect(() => {
     checkConnection();
     createThread();
+    if (apiService.getToken()) refreshConnections();
   }, []);
 
   const checkConnection = async () => {
@@ -319,13 +334,88 @@ const ChatUI: React.FC = () => {
   const getConnectionStatusText = () => {
     switch (connectionStatus) {
       case 'connected':
-        return <span className="connected">Connected to BigQuery</span>;
+        return (
+          <span className="connected">
+            {selectedConnection
+              ? `Connected: ${selectedConnection.name}`
+              : 'Connected'}
+          </span>
+        );
       case 'disconnected':
         return <span className="disconnected">Disconnected</span>;
       case 'checking':
         return <span className="connecting">Checking connection...</span>;
       default:
         return 'Unknown status';
+    }
+  };
+
+  const refreshConnections = async () => {
+    try {
+      const list = await apiService.listConnections();
+      setConnections(list);
+      // Re-hydrate selected connection reference from list (in case it changed)
+      const sel = apiService.getSelectedConnection();
+      if (sel) {
+        const refreshed = list.find((c) => c.id === sel.id) || null;
+        setSelectedConnection(refreshed);
+        apiService.setSelectedConnection(refreshed);
+      }
+    } catch (e) {
+      console.warn('Failed to load connections', e);
+    }
+  };
+
+  const handleSelectConnection = (conn: UserConnection | null) => {
+    setSelectedConnection(conn);
+    apiService.setSelectedConnection(conn);
+  };
+
+  const handleSaveConnection = async () => {
+    try {
+      if (editingId) {
+        const updated = await apiService.updateConnection(editingId, formState);
+        setEditingId(null);
+      } else {
+        await apiService.createConnection(formState);
+      }
+      setFormState({ name: '', db_type: 'postgres' });
+      await refreshConnections();
+    } catch (e) {
+      alert((e as Error).message);
+    }
+  };
+
+  const handleEdit = (conn: UserConnection) => {
+    setEditingId(conn.id);
+    setFormState({
+      name: conn.name,
+      db_type: (conn.db_type as 'postgres' | 'sqlite') || 'postgres',
+      host: conn.host || undefined,
+      port: conn.port || undefined,
+      username: conn.username || undefined,
+      database_name: conn.database_name || undefined,
+    });
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('Delete this connection?')) return;
+    try {
+      await apiService.deleteConnection(id);
+      if (selectedConnection?.id === id) handleSelectConnection(null);
+      await refreshConnections();
+    } catch (e) {
+      alert((e as Error).message);
+    }
+  };
+
+  const handleTest = async (id: number) => {
+    setTestingId(id);
+    try {
+      const ok = await apiService.testConnection(id);
+      alert(ok ? 'Connection OK' : 'Connection failed');
+    } finally {
+      setTestingId(null);
     }
   };
 
@@ -348,7 +438,13 @@ const ChatUI: React.FC = () => {
                   getConnectionStatusColor(),
                 )}
               ></div>
-              <span>{getConnectionStatusText()}</span>
+              <button
+                onClick={() => setConnectionsOpen(true)}
+                className="hover:text-gray-200"
+                title="Manage connections"
+              >
+                {getConnectionStatusText()}
+              </button>
             </div>
             <button
               onClick={checkConnection}
@@ -607,6 +703,220 @@ const ChatUI: React.FC = () => {
           </form>
         </div>
       </main>
+      {/* Connections sidebar */}
+      {connectionsOpen && (
+        <div className="fixed inset-0 z-20">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setConnectionsOpen(false)}
+          />
+          <div className="absolute right-0 top-0 h-full w-full sm:w-[420px] bg-gray-900 border-l border-gray-800 p-4 overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-white">Connections</h2>
+              <button
+                onClick={() => setConnectionsOpen(false)}
+                className="text-gray-400 hover:text-gray-200"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="space-y-2 mb-6">
+              <label className="block text-sm text-gray-300">Name</label>
+              <input
+                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
+                value={formState.name || ''}
+                onChange={(e) =>
+                  setFormState({ ...formState, name: e.target.value })
+                }
+                placeholder="My Postgres"
+              />
+              <label className="block text-sm text-gray-300 mt-3">Type</label>
+              <select
+                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
+                value={formState.db_type}
+                onChange={(e) =>
+                  setFormState({
+                    ...formState,
+                    db_type: e.target.value as 'postgres' | 'sqlite',
+                  })
+                }
+              >
+                <option value="postgres">PostgreSQL</option>
+                <option value="sqlite">SQLite</option>
+              </select>
+
+              {formState.db_type === 'sqlite' ? (
+                <>
+                  <label className="block text-sm text-gray-300 mt-3">
+                    File path
+                  </label>
+                  <input
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
+                    value={formState.host || ''}
+                    onChange={(e) =>
+                      setFormState({ ...formState, host: e.target.value })
+                    }
+                    placeholder="/path/to/db.sqlite"
+                  />
+                </>
+              ) : (
+                <>
+                  <label className="block text-sm text-gray-300 mt-3">
+                    Host
+                  </label>
+                  <input
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
+                    value={formState.host || ''}
+                    onChange={(e) =>
+                      setFormState({ ...formState, host: e.target.value })
+                    }
+                    placeholder="localhost"
+                  />
+                  <label className="block text-sm text-gray-300 mt-3">
+                    Port
+                  </label>
+                  <input
+                    type="number"
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
+                    value={formState.port || ''}
+                    onChange={(e) =>
+                      setFormState({
+                        ...formState,
+                        port: Number(e.target.value),
+                      })
+                    }
+                    placeholder="5432"
+                  />
+                  <label className="block text-sm text-gray-300 mt-3">
+                    Username
+                  </label>
+                  <input
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
+                    value={formState.username || ''}
+                    onChange={(e) =>
+                      setFormState({ ...formState, username: e.target.value })
+                    }
+                    placeholder="postgres"
+                  />
+                  <label className="block text-sm text-gray-300 mt-3">
+                    Database
+                  </label>
+                  <input
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
+                    value={formState.database_name || ''}
+                    onChange={(e) =>
+                      setFormState({
+                        ...formState,
+                        database_name: e.target.value,
+                      })
+                    }
+                    placeholder="example_db"
+                  />
+                  <label className="block text-sm text-gray-300 mt-3">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
+                    onChange={(e) =>
+                      setFormState({ ...formState, password: e.target.value })
+                    }
+                    placeholder={
+                      editingId ? 'Leave blank to keep current' : 'Password'
+                    }
+                  />
+                </>
+              )}
+
+              <div className="flex items-center space-x-2 mt-4">
+                <button
+                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
+                  onClick={handleSaveConnection}
+                >
+                  {editingId ? 'Update' : 'Create'}
+                </button>
+                <button
+                  className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded"
+                  onClick={() => {
+                    setEditingId(null);
+                    setFormState({ name: '', db_type: 'postgres' });
+                  }}
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold text-gray-300 mb-2">
+                Your connections
+              </h3>
+              <div className="space-y-2">
+                {connections.map((c) => (
+                  <div
+                    key={c.id}
+                    className={cn(
+                      'border border-gray-800 rounded p-3',
+                      selectedConnection?.id === c.id && 'border-green-600',
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-white text-sm">{c.name}</div>
+                        <div className="text-xs text-gray-400">
+                          {c.db_type}
+                          {c.host ? ` · ${c.host}` : ''}
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          className="text-xs px-2 py-1 bg-gray-700 rounded hover:bg-gray-600"
+                          onClick={() => handleSelectConnection(c)}
+                        >
+                          Select
+                        </button>
+                        <button
+                          className="text-xs px-2 py-1 bg-blue-700 rounded hover:bg-blue-600"
+                          onClick={() => handleEdit(c)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="text-xs px-2 py-1 bg-red-700 rounded hover:bg-red-600"
+                          onClick={() => handleDelete(c.id)}
+                        >
+                          Delete
+                        </button>
+                        <button
+                          className="text-xs px-2 py-1 bg-gray-700 rounded hover:bg-gray-600 disabled:opacity-50"
+                          disabled={testingId === c.id}
+                          onClick={() => handleTest(c.id)}
+                        >
+                          {testingId === c.id ? 'Testing...' : 'Test'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {connections.length === 0 && (
+                  <div className="text-xs text-gray-500">
+                    No connections yet.
+                  </div>
+                )}
+              </div>
+              <div className="mt-3">
+                <button
+                  className="text-xs text-gray-400 underline"
+                  onClick={refreshConnections}
+                >
+                  Refresh list
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -2,7 +2,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 
 from models.user_connection import UserConnection
-from schemas.connection import UserConnectionCreate
+from schemas.connection import UserConnectionCreate, UserConnectionUpdate
 from core.config import settings
 from core.crypto import encrypt_secret
 
@@ -55,6 +55,60 @@ class UserConnectionCRUD:
         db.commit()
         db.refresh(record)
         return record
+
+    @staticmethod
+    def update_user_connection(
+        db: Session,
+        user_id: int,
+        connection_id: int,
+        payload: UserConnectionUpdate,
+    ) -> Optional[UserConnection]:
+        record = (
+            db.query(UserConnection)
+            .filter(
+                UserConnection.user_id == user_id, UserConnection.id == connection_id
+            )
+            .first()
+        )
+        if not record:
+            return None
+
+        update_data = payload.model_dump(exclude_unset=True)
+
+        # Handle password encryption if provided
+        if "password" in update_data:
+            password = update_data.pop("password")
+            if password:
+                iv, encrypted_password = encrypt_secret(
+                    password, settings.master_encryption_key
+                )
+                record.iv = iv
+                record.encrypted_password = encrypted_password
+            else:
+                record.iv = None
+                record.encrypted_password = None
+
+        for field, value in update_data.items():
+            setattr(record, field, value)
+
+        db.commit()
+        db.refresh(record)
+        return record
+
+    @staticmethod
+    def delete_user_connection(db: Session, user_id: int, connection_id: int) -> bool:
+        record = (
+            db.query(UserConnection)
+            .filter(
+                UserConnection.user_id == user_id, UserConnection.id == connection_id
+            )
+            .first()
+        )
+        if not record:
+            return False
+        db.delete(record)
+        db.commit()
+        return True
 
 
 user_connection_crud = UserConnectionCRUD()

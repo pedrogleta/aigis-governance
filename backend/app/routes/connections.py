@@ -7,7 +7,11 @@ from core.database import get_postgres_db
 from crud.connection import user_connection_crud
 from models.user import User
 from models.user_connection import UserConnection
-from schemas.connection import UserConnectionCreate, UserConnectionResponse
+from schemas.connection import (
+    UserConnectionCreate,
+    UserConnectionResponse,
+    UserConnectionUpdate,
+)
 from core.crypto import decrypt_secret
 from core.config import settings
 from core.database import db_manager
@@ -50,6 +54,37 @@ async def get_connection(
             status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found"
         )
     return record
+
+
+@router.put("/{connection_id}", response_model=UserConnectionResponse)
+async def update_connection(
+    connection_id: int,
+    payload: UserConnectionUpdate,
+    db: Session = Depends(get_postgres_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    record = user_connection_crud.update_user_connection(
+        db, current_user.id, connection_id, payload
+    )
+    if not record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found"
+        )
+    return record
+
+
+@router.delete("/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_connection(
+    connection_id: int,
+    db: Session = Depends(get_postgres_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    ok = user_connection_crud.delete_user_connection(db, current_user.id, connection_id)
+    if not ok:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found"
+        )
+    return None
 
 
 @router.post("/{connection_id}/test", status_code=status.HTTP_200_OK)

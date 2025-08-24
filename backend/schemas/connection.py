@@ -16,6 +16,16 @@ class UserConnectionCreate(UserConnectionBase):
     password: Optional[str] = Field(None, description="Password for database user")
 
 
+class UserConnectionUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    db_type: Optional[str] = Field(None)
+    host: Optional[str] = Field(None)
+    port: Optional[int] = Field(None, ge=1, le=65535)
+    username: Optional[str] = Field(None)
+    database_name: Optional[str] = Field(None)
+    password: Optional[str] = Field(None)
+
+
 class UserConnectionResponse(UserConnectionBase):
     model_config = ConfigDict(from_attributes=True)
 
