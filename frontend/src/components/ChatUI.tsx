@@ -11,6 +11,7 @@ import {
   StreamingMessageComponent,
   StreamingTextComponent,
 } from './MessageComponents';
+import ConnectionsSidebar from './ConnectionsSidebar';
 
 interface Message {
   id: string;
@@ -53,9 +54,7 @@ const ChatUI: React.FC = () => {
   });
   const [editingId, setEditingId] = useState<number | null>(null);
   const [testingId, setTestingId] = useState<number | null>(null);
-  // Control sidebar enter/exit animation state so we can fade/slide it
-  const [sidebarActive, setSidebarActive] = useState(false);
-  const closeTimeoutRef = useRef<number | null>(null);
+  // sidebar handled in separate component
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -104,21 +103,7 @@ const ChatUI: React.FC = () => {
     if (apiService.getToken()) refreshConnections();
   }, []);
 
-  // keep sidebar animation state in sync with open/close
-  useEffect(() => {
-    if (connectionsOpen) {
-      // ensure mounted -> then activate animation
-      // small delay lets the DOM mount with initial classes
-      window.setTimeout(() => setSidebarActive(true), 10);
-    } else {
-      // if being closed, clear any pending timeout
-      setSidebarActive(false);
-      if (closeTimeoutRef.current) {
-        window.clearTimeout(closeTimeoutRef.current);
-        closeTimeoutRef.current = null;
-      }
-    }
-  }, [connectionsOpen]);
+  // sidebar animation state is handled by ConnectionsSidebar
 
   const checkConnection = async () => {
     setConnectionStatus('checking');
@@ -725,271 +710,24 @@ const ChatUI: React.FC = () => {
         </div>
       </main>
       {/* Connections sidebar */}
-      {(connectionsOpen || sidebarActive) && (
-        <div className="fixed inset-0 z-20">
-          <div
-            className={cn(
-              'absolute inset-0 bg-black/50 transition-opacity duration-200',
-              sidebarActive ? 'opacity-80' : 'opacity-0 pointer-events-none',
-            )}
-            onClick={() => {
-              // start hide animation and unmount after duration
-              setSidebarActive(false);
-              if (closeTimeoutRef.current)
-                window.clearTimeout(closeTimeoutRef.current);
-              closeTimeoutRef.current = window.setTimeout(
-                () => setConnectionsOpen(false),
-                200,
-              );
-            }}
-            style={{ cursor: 'pointer' }}
-          />
-          <div
-            id="connections-sidebar"
-            className={cn(
-              'absolute right-0 top-0 h-full w-full sm:w-[420px] bg-gray-900 border-l border-gray-800 p-4 overflow-y-auto transform transition-all duration-200',
-              sidebarActive
-                ? 'opacity-100 translate-x-0'
-                : 'opacity-0 translate-x-6',
-            )}
-            role="dialog"
-            aria-modal="true"
-            aria-hidden={!sidebarActive}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-white">Connections</h2>
-              <button
-                onClick={() => {
-                  setSidebarActive(false);
-                  if (closeTimeoutRef.current)
-                    window.clearTimeout(closeTimeoutRef.current);
-                  closeTimeoutRef.current = window.setTimeout(
-                    () => setConnectionsOpen(false),
-                    200,
-                  );
-                }}
-                className="text-gray-400 hover:text-gray-200 cursor-pointer"
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="space-y-2 mb-6">
-              <label className="block text-sm text-gray-300">Name</label>
-              <input
-                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
-                value={formState.name || ''}
-                onChange={(e) =>
-                  setFormState({ ...formState, name: e.target.value })
-                }
-                placeholder="My Postgres"
-              />
-              <label className="block text-sm text-gray-300 mt-3">Type</label>
-              <select
-                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
-                value={formState.db_type}
-                onChange={(e) =>
-                  setFormState({
-                    ...formState,
-                    db_type: e.target.value as 'postgres' | 'sqlite',
-                  })
-                }
-              >
-                <option value="postgres">PostgreSQL</option>
-                <option value="sqlite">SQLite</option>
-              </select>
-
-              {formState.db_type === 'sqlite' ? (
-                <>
-                  <label className="block text-sm text-gray-300 mt-3">
-                    File path
-                  </label>
-                  <input
-                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
-                    value={formState.host || ''}
-                    onChange={(e) =>
-                      setFormState({ ...formState, host: e.target.value })
-                    }
-                    placeholder="/path/to/db.sqlite"
-                  />
-                </>
-              ) : (
-                <>
-                  <label className="block text-sm text-gray-300 mt-3">
-                    Host
-                  </label>
-                  <input
-                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
-                    value={formState.host || ''}
-                    onChange={(e) =>
-                      setFormState({ ...formState, host: e.target.value })
-                    }
-                    placeholder="localhost"
-                  />
-                  <label className="block text-sm text-gray-300 mt-3">
-                    Port
-                  </label>
-                  <input
-                    type="number"
-                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
-                    value={formState.port || ''}
-                    onChange={(e) =>
-                      setFormState({
-                        ...formState,
-                        port: Number(e.target.value),
-                      })
-                    }
-                    placeholder="5432"
-                  />
-                  <label className="block text-sm text-gray-300 mt-3">
-                    Username
-                  </label>
-                  <input
-                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
-                    value={formState.username || ''}
-                    onChange={(e) =>
-                      setFormState({ ...formState, username: e.target.value })
-                    }
-                    placeholder="postgres"
-                  />
-                  <label className="block text-sm text-gray-300 mt-3">
-                    Database
-                  </label>
-                  <input
-                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
-                    value={formState.database_name || ''}
-                    onChange={(e) =>
-                      setFormState({
-                        ...formState,
-                        database_name: e.target.value,
-                      })
-                    }
-                    placeholder="example_db"
-                  />
-                  <label className="block text-sm text-gray-300 mt-3">
-                    Password
-                  </label>
-                  <input
-                    type="password"
-                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
-                    onChange={(e) =>
-                      setFormState({ ...formState, password: e.target.value })
-                    }
-                    placeholder={
-                      editingId ? 'Leave blank to keep current' : 'Password'
-                    }
-                  />
-                </>
-              )}
-
-              <div className="flex items-center space-x-2 mt-4">
-                <button
-                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded cursor-pointer"
-                  onClick={handleSaveConnection}
-                >
-                  {editingId ? 'Update' : 'Create'}
-                </button>
-                <button
-                  className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded cursor-pointer"
-                  onClick={() => {
-                    setEditingId(null);
-                    setFormState({ name: '', db_type: 'postgres' });
-                  }}
-                >
-                  Clear
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-sm font-semibold text-gray-300 mb-2">
-                Your connections
-              </h3>
-              <div className="space-y-2">
-                {connections.map((c) => (
-                  <div
-                    key={c.id}
-                    className={cn(
-                      'border border-gray-800 rounded p-3 flex items-center justify-between space-x-3 hover:border-green-600 transition-colors',
-                      selectedConnection?.id === c.id &&
-                        'border-green-600 bg-gray-800',
-                    )}
-                  >
-                    <div className="flex items-center space-x-3 min-w-0">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-white truncate">
-                          {c.name}
-                        </div>
-                        <div className="text-xs text-gray-400 truncate">
-                          {c.db_type} {c.host ? `• ${c.host}` : ''}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <button
-                        title={
-                          selectedConnection?.id === c.id
-                            ? 'Selected'
-                            : 'Select'
-                        }
-                        onClick={() => handleSelectConnection(c)}
-                        className={cn(
-                          'text-xs px-2 py-1 rounded text-gray-200 hover:bg-gray-800 transition-colors',
-                          selectedConnection?.id === c.id &&
-                            'bg-green-600 text-white',
-                        )}
-                        style={{ cursor: 'pointer' }}
-                      >
-                        {selectedConnection?.id === c.id
-                          ? 'Selected'
-                          : 'Select'}
-                      </button>
-                      <button
-                        onClick={() => handleTest(c.id)}
-                        disabled={testingId === c.id}
-                        className="text-xs px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-200 transition-colors"
-                        style={{ cursor: 'pointer' }}
-                        title="Test connection"
-                      >
-                        {testingId === c.id ? 'Testing...' : 'Test'}
-                      </button>
-                      <button
-                        onClick={() => handleEdit(c)}
-                        className="text-xs px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-200 transition-colors"
-                        style={{ cursor: 'pointer' }}
-                        title="Edit"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(c.id)}
-                        className="text-xs px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-white transition-colors"
-                        style={{ cursor: 'pointer' }}
-                        title="Delete"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                {connections.length === 0 && (
-                  <div className="text-xs text-gray-500">
-                    No connections yet.
-                  </div>
-                )}
-              </div>
-              <div className="mt-3">
-                <button
-                  className="text-xs text-gray-400 underline cursor-pointer"
-                  onClick={refreshConnections}
-                >
-                  Refresh list
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConnectionsSidebar
+        open={connectionsOpen}
+        active={connectionsOpen}
+        onClose={() => setConnectionsOpen(false)}
+        connections={connections}
+        selectedConnection={selectedConnection}
+        formState={formState}
+        editingId={editingId}
+        testingId={testingId}
+        setFormState={(s) => setFormState(s)}
+        setEditingId={(id) => setEditingId(id)}
+        onSelect={handleSelectConnection}
+        onSave={handleSaveConnection}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+        onTest={handleTest}
+        onRefresh={refreshConnections}
+      />
     </div>
   );
 };
