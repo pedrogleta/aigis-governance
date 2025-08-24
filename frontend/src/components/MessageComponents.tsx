@@ -10,6 +10,7 @@ import type {
 } from '../services/api';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { VegaLite } from 'react-vega';
 
 interface MessageProps {
   message: StreamingMessage;
@@ -293,12 +294,76 @@ export const PlotComponent: React.FC<{
 export const ToolComponent: React.FC<{ message: ToolStreamMessage }> = ({
   message,
 }) => {
+  // Attempt to interpret tool output
+  const parseIfJson = (val: unknown): unknown => {
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      if (
+        (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+        (trimmed.startsWith('[') && trimmed.endsWith(']'))
+      ) {
+        try {
+          const result = JSON.parse(trimmed);
+
+          return result;
+        } catch {
+          return val;
+        }
+      }
+    }
+
+    return val;
+  };
+
+  const contentParsed = parseIfJson(message.content) as any;
+
+  let vegaLiteSpec: any | null = null;
+  if (
+    contentParsed &&
+    typeof contentParsed === 'object' &&
+    'type' in contentParsed &&
+    (contentParsed as any).type === 'vega_lite_spec'
+  ) {
+    const specField = (contentParsed as any).spec;
+    if (typeof specField === 'string') {
+      try {
+        console.log({ specField });
+        const cleanedSpecField = specField
+          .replaceAll('\n', '')
+          .replaceAll('\\', '');
+        console.log({ cleanedSpecField });
+
+        vegaLiteSpec = JSON.parse(cleanedSpecField);
+      } catch {
+        console.log('here is the error');
+
+        vegaLiteSpec = null;
+      }
+    } else if (specField && typeof specField === 'object') {
+      vegaLiteSpec = specField;
+    }
+  }
+
+  console.log({ vegaLiteSpec });
+
   return (
     <div className="bg-amber-900/20 border border-amber-700/50 rounded-lg p-4 mb-3">
       <div className="text-sm text-amber-300 font-medium mb-2">Tool Output</div>
-      <pre className="text-xs text-amber-100 overflow-x-auto whitespace-pre-wrap">
-        {message.content}
-      </pre>
+
+      {vegaLiteSpec ? (
+        <div className="bg-gray-900 border border-gray-800 rounded-md p-3">
+          <div className="aspect-video">
+            <VegaLite spec={vegaLiteSpec} actions={false} />
+          </div>
+        </div>
+      ) : (
+        <pre className="text-xs text-amber-100 overflow-x-auto whitespace-pre-wrap">
+          {typeof message.content === 'string'
+            ? message.content
+            : JSON.stringify(contentParsed ?? message.content, null, 2)}
+        </pre>
+      )}
+
       <div className="text-xs text-amber-400 mt-2">
         {message.timestamp.toLocaleTimeString()}
       </div>

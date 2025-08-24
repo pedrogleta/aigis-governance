@@ -105,12 +105,12 @@ DO NOT respond with anything else besides just the raw JSON.
             return "Error: app configuration error. Tell the user it's an internal server error."
 
         vega_lite_spec_message = model.invoke(
-            [SystemMessage(content=ask_analyst_prompt.format(query=query))]
+            [SystemMessage(content=ask_analyst_prompt.format(query_with_data=query))]
         )
 
         vega_lite_spec = str(vega_lite_spec_message.content)
 
-        return vega_lite_spec
+        return {"type": "vega_lite_spec", "spec": vega_lite_spec}
 
     return ask_analyst
 

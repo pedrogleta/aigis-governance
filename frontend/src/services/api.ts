@@ -3,7 +3,7 @@
 // Simple backend SSE payload type
 type BackendSSE =
   | { type: 'chunk'; content: string }
-  | { type: 'tool_result'; content: string }
+  | { type: 'tool_result'; content: unknown }
   | { type: 'end'; full_response: string }
   | { type: 'error'; error: string };
 
@@ -58,7 +58,7 @@ export interface PlotMessage {
 
 export interface ToolStreamMessage {
   type: 'tool';
-  content: string;
+  content: unknown;
   timestamp: Date;
 }
 
@@ -224,10 +224,7 @@ export class ApiService {
                   };
                   onChunk(textMessage);
                   finalTextContent += data.content;
-                } else if (
-                  data.type === 'tool_result' &&
-                  typeof data.content === 'string'
-                ) {
+                } else if (data.type === 'tool_result') {
                   const toolMessage: ToolStreamMessage = {
                     type: 'tool',
                     content: data.content,
