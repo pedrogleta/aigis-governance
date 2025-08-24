@@ -1,6 +1,6 @@
 # Aigis Governance
 
-An AI Agent system that allows users to connect to BigQuery datasets and ask natural language questions about data, including creating plots for data visualization.
+An AI Agent system that allows users to connect to datasets and ask natural language questions about data, including creating plots for data visualization.
 
 ## Features
 
@@ -13,7 +13,7 @@ An AI Agent system that allows users to connect to BigQuery datasets and ask nat
 ## Architecture
 
 The system consists of:
-- **Backend**: Python-based AI agents using Google's ADK framework
+- **Backend**: Python-based FastAPI backend
 - **Frontend**: React + Vite chat interface for user interaction
 - **Database**: BigQuery integration for data access and analysis
 
@@ -21,101 +21,44 @@ The system consists of:
 
 ### Prerequisites
 
-Before running the project, make sure you are authenticated with Google Cloud and have access to Vertex AI:
+### Running the application (locally)
 
-1. **Install PM2 globally**  
-   This project uses PM2 for process management. Install it globally:
-   ```bash
-   npm install -g pm2
-   ```
+The backend is a FastAPI app and the frontend uses Vite. During development run them separately from the project root:
 
-2. **Authenticate with Google Cloud CLI**  
-   Make sure you have the [gcloud CLI](https://cloud.google.com/sdk/docs/install) installed.  
-   Run the following command and follow the prompts to log in:
-   ```
-   gcloud auth login
-   ```
+Backend (from `backend/`):
+```bash
+# create and activate a uv-managed virtual environment and sync dependencies
+cd backend
+uv venv
+uv sync
+# run the server inside the uv venv
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
 
-3. **Set your default project**  
-   Replace `<YOUR_PROJECT_ID>` with your Google Cloud project ID:
-   ```
-   gcloud config set project <YOUR_PROJECT_ID>
-   ```
+Frontend (from `frontend/`):
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-4. **Use a service account for credentials (recommended)**  
-    Instead of using Application Default Credentials, create a Google Cloud service account with the following roles:
+### Running with Docker Compose
 
-    - Vertex AI Service Agent (roles/aiplatform.serviceAgent)
-    - BigQuery Data Viewer (roles/bigquery.dataViewer)
-
-    Example commands (replace <YOUR_PROJECT_ID> and `aigis-agent` as needed):
-
-    ```bash
-    # Create the service account
-    gcloud iam service-accounts create aigis-agent --display-name="Aigis Service Account"
-
-    # Grant roles to the service account
-    gcloud projects add-iam-policy-binding <YOUR_PROJECT_ID> \
-       --member="serviceAccount:aigis-agent@<YOUR_PROJECT_ID>.iam.gserviceaccount.com" \
-       --role="roles/aiplatform.serviceAgent"
-
-    gcloud projects add-iam-policy-binding <YOUR_PROJECT_ID> \
-       --member="serviceAccount:aigis-agent@<YOUR_PROJECT_ID>.iam.gserviceaccount.com" \
-       --role="roles/bigquery.dataViewer"
-
-    # Create a JSON key and save it directly into the backend directory
-    gcloud iam service-accounts keys create backend/credentials.json \
-       --iam-account=aigis-agent@<YOUR_PROJECT_ID>.iam.gserviceaccount.com
-    ```
-
-    The command above will create a JSON key and save it as `backend/credentials.json`. Place the service-account JSON key in the `backend/` directory named `credentials.json` (this will replace the example file `backend/credentials.example.json` if present).
-
-    Important: the JSON key contains sensitive credentials. Do not commit `backend/credentials.json` to source control (add it to `.gitignore` if needed).
-
-    If you prefer to use Application Default Credentials for quick testing, you can still run:
-    ```bash
-    gcloud auth application-default login
-    ```
-
-### Running the Application
-
-This project uses PM2 for process management. Follow these steps to start the system:
-
-1. **Install dependencies** (if not already done):
-   ```bash
-   npm install
-   ```
-
-2. **Run the setup script** to start the core services:
-   ```bash
-   npm run setup
-   ```
-   This will start the setup and services processes using PM2.
-
-3. **Start the development environment**:
-   ```bash
-   npm run dev
-   ```
-   This will start the main application using PM2.
-
-4. **Open your browser** and navigate to `http://localhost:3000`
-
-### PM2 Management Commands
-
-The project includes several PM2 management commands:
+A docker-compose setup is provided to run the full stack (Postgres, MinIO, backend, frontend). From the project root:
 
 ```bash
-npm run list      # List all running PM2 processes
-npm run logs      # View logs from all processes
-npm run stop      # Stop the main application
-npm run cleanup   # Stop and remove all PM2 processes
+docker compose up --build
 ```
+
+This will expose:
+- Backend: http://localhost:8000
+- Frontend (Vite dev server): http://localhost:3000
 
 
 
 ## Backend Development
 
-The project now uses a custom FastAPI backend (replacing the previous Google ADK api_server). The backend provides authentication, chat endpoints (SSE streaming), and connections to both PostgreSQL (primary) and user-created SQLite databases.
+The project uses a custom FastAPI backend. The backend provides authentication, chat endpoints (SSE streaming), and connections to both PostgreSQL (primary) and user-created SQLite databases.
 
 Key backend locations:
 
@@ -136,10 +79,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 python -m backend.app.main
 ```
 
-Note: There used to be a `start_server.sh` reference in older docs; the current recommended dev command is `uvicorn app.main:app --reload` from the `backend/` folder.
-npm run dev         # Start development server
-npm run build       # Build for production
-npm run preview     # Preview production build
+Note: The backend runs with Uvicorn and the frontend uses Vite during development. Docker Compose will run both services so you can open the frontend at the address above.
 ```
 
 ## Backend Development
@@ -152,20 +92,15 @@ The Python backend includes:
 
 ### Backend Commands
 
+Use Uvicorn for local development:
+
 ```bash
-# Start the ADK API server
-cd backend
-./start_server.sh
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ## API Endpoints
 
-The system provides the following ADK API endpoints:
-
-- `POST /run` - Send chat messages and run AI agents
-- `GET /list-apps` - List available applications
-- `POST /apps/{app_name}/users/{user_id}/sessions` - Create sessions
-- `GET /apps/{app_name}/users/{user_id}/sessions/{session_id}` - Get session
+The backend exposes REST and SSE endpoints for chat and agent orchestration. Refer to `backend/app/routes` for details.
 
 ## Configuration
 
@@ -186,7 +121,7 @@ Edit `frontend/config.ts` to customize:
 ### Common Issues
 
 1. **BigQuery Connection Errors**
-   - Ensure you're authenticated with `gcloud auth application-default login`
+   - Ensure your Google Cloud credentials (service account or ADC) are available to the backend when using BigQuery
    - Check your project permissions
 
 2. **Frontend Build Errors**
@@ -205,7 +140,7 @@ Edit `frontend/config.ts` to customize:
 
 ## Hint
 
-After running the project for the first time, it is recommended to run `uv run list_extensions.py` once and copy the extension value into the .env `CODE_INTERPRETER_EXTENSION_NAME` variable for increased performance of future executions. This will be streamlined in future versions.
+If your setup uses BigQuery or other cloud services, place any service account JSON credentials in `backend/credentials.json` (do not commit this file). Use environment variables or a `.env` file for secrets and configuration.
 
 ## License
 
