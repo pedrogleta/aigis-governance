@@ -338,12 +338,16 @@ const ChatUI: React.FC = () => {
   const getConnectionStatusText = () => {
     switch (connectionStatus) {
       case 'connected':
-        return (
-          <span className="connected">
-            {selectedConnection
-              ? `Connected: ${selectedConnection.name}`
-              : 'Connected'}
+        // Show the selected connection name when connected; otherwise prompt to choose one
+        return selectedConnection ? (
+          <span className="connected text-green-200 font-medium">
+            Connected to:{' '}
+            <span className="text-white font-semibold ml-1 truncate">
+              {selectedConnection.name}
+            </span>
           </span>
+        ) : (
+          <span className="text-gray-300">Choose a connection</span>
         );
       case 'disconnected':
         return <span className="disconnected">Disconnected</span>;
@@ -435,7 +439,7 @@ const ChatUI: React.FC = () => {
             <p className="text-sm text-gray-400">AI Data Science Assistant</p>
           </div>
           <div className="ml-auto flex items-center space-x-2 text-sm text-gray-400">
-            <div className="flex items-center space-x-1">
+            <div className="flex items-center space-x-2">
               <div
                 className={cn(
                   'w-2 h-2 rounded-full',
@@ -446,8 +450,9 @@ const ChatUI: React.FC = () => {
                 onClick={() => setConnectionsOpen(true)}
                 aria-expanded={connectionsOpen}
                 aria-controls="connections-sidebar"
-                className="hover:text-gray-200 cursor-pointer text-sm flex items-center"
+                className="text-sm px-4 py-2 rounded bg-gray-800 text-white hover:bg-gray-700 transition-colors flex items-center focus:outline-none focus:ring-2 focus:ring-green-500 cursor-pointer"
                 title="Manage connections"
+                role="button"
               >
                 {getConnectionStatusText()}
               </button>
