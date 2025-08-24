@@ -414,7 +414,6 @@ const ChatUI: React.FC = () => {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Delete this connection?')) return;
     try {
       await apiService.deleteConnection(id);
       if (selectedConnection?.id === id) handleSelectConnection(null);
