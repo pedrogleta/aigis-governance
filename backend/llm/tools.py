@@ -57,9 +57,6 @@ DO NOT respond with anything else besides just the raw SQL code.
 
         sql_query = str(sql_query_message.content)
 
-        # Execute SQL against the user's selected connection
-        sql_execution_result = ""
-
         (sql_execution_result, error) = execute_query(connection, sql_query)
 
         if error is not None:
