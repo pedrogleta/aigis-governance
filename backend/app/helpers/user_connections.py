@@ -86,16 +86,7 @@ def get_db_schema(connection: dict | None = None) -> str:
     try:
         tables = inspector.get_table_names()
     except Exception:
-        # Fallback: query sqlite_master directly if inspector fails
         tables = []
-        try:
-            with engine.connect() as conn:
-                result = conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table';"
-                )
-                tables = [row[0] for row in result]
-        except Exception:
-            tables = []
 
     md_parts = []
     # Build markdown for each table: title + markdown table (columns) + up to 3 sample rows
@@ -145,8 +136,7 @@ def get_db_schema(connection: dict | None = None) -> str:
                 md_parts.append("\n")
     except Exception:
         # If anything goes wrong assembling markdown, return an empty schema string
-        db_schema = ""
-        return db_schema
+        return ""
 
     db_schema = "\n".join(md_parts)
     return db_schema

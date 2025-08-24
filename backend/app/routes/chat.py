@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from langgraph.graph.state import RunnableConfig
+from langchain_core.messages import ToolMessage, HumanMessage
 
 from app.helpers.langgraph import stream_langgraph_events
 from llm.agent import graph
@@ -16,6 +17,7 @@ from core.database import get_postgres_db
 from auth.dependencies import get_current_user
 from models.user import User
 from crud.thread import thread_crud
+
 
 router = APIRouter(prefix="/chat")
 
@@ -175,7 +177,16 @@ async def update_thread_connection(
     try:
         # Update the checkpointer state with both connection and db_schema
         graph.update_state(
-            thread_config, {"connection": connection_ref, "db_schema": db_schema}
+            thread_config,
+            {
+                "connection": connection_ref,
+                "db_schema": db_schema,
+                "messages": [
+                    HumanMessage(
+                        content=f"Your connection has been changed to:\n\n{db_schema}"
+                    )
+                ],
+            },
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update state: {str(e)}")

@@ -124,6 +124,6 @@ def create_tools(models: Optional[Dict[str, Any]] = None) -> List[Any]:
     gpt_oss = models.get("gpt_oss")
     # You can choose which model powers which tool; adjust as needed.
     return [
-        make_ask_database(gpt_oss),
-        make_ask_analyst(gpt_oss),
+        make_ask_database(qwen),
+        make_ask_analyst(qwen),
     ]
