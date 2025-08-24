@@ -120,22 +120,25 @@ ONLY output the full fixed JSON.
 
         vega_lite_spec = str(vega_lite_spec_message.content)
 
-        retries = 3
-        is_valid_json = False
-        while retries > 0 and is_valid_json is False:
+        max_retries = 3
+        for attempt_num in range(max_retries):
             try:
-                _ = json.loads(vega_lite_spec)
-                is_valid_json = True
-            except ValueError:
-                retries -= 1
-                attempt = model.invoke(
+                json.loads(vega_lite_spec)
+                break
+            except Exception:
+                if attempt_num == max_retries - 1:
+                    break
+                fix_response = model.invoke(
                     [
                         SystemMessage(
                             content=json_fixer_prompt.format(json=vega_lite_spec)
                         )
                     ]
                 )
-                vega_lite_spec = str(attempt.content)
+                new_spec = str(fix_response.content)
+                if new_spec.strip() == vega_lite_spec.strip():
+                    break
+                vega_lite_spec = new_spec
 
         return {"type": "vega_lite_spec", "spec": vega_lite_spec}
 
