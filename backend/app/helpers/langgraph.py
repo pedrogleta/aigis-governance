@@ -1,17 +1,25 @@
 import json
+import os
 from typing import Literal, Tuple, cast, Dict, Any, Optional
 from langchain_core.messages import AIMessageChunk, ToolMessage
 from langgraph.graph.state import RunnableConfig
 from pydantic import BaseModel
-from opik.integrations.langchain import OpikTracer
 
 from llm.agent import graph
 from core.types import AigisState
 from sqlalchemy.orm import Session
 from crud.thread import thread_crud
 from datetime import datetime, timezone
+from dotenv import load_dotenv
+from opik.integrations.langchain import OpikTracer
 
-tracer = OpikTracer(graph=graph.get_graph(xray=True))
+load_dotenv()
+
+tracer = None
+if os.getenv("ENABLE_OPIK_TRACER"):
+    tracer = OpikTracer(graph=graph.get_graph(xray=True))
+else:
+    tracer = None
 
 
 class Chunk(BaseModel):
@@ -31,7 +39,9 @@ async def stream_langgraph_events(
     thread_id = cast(dict, thread)["configurable"]["thread_id"]
     full_response = ""
 
-    thread["callbacks"] = [tracer]
+    # Attach tracer callback only when enabled and tracer exists.
+    if tracer is not None:
+        thread["callbacks"] = [tracer]
 
     async for event in graph.astream(graph_input, thread, stream_mode="messages"):
         event_tuple = cast(Tuple, event)
