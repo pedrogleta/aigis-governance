@@ -6,7 +6,6 @@ import ConfirmationModal from './ConfirmationModal';
 
 interface Props {
   open: boolean;
-  active: boolean;
   onClose: () => void;
   connections: UserConnection[];
   selectedConnection: UserConnection | null;
@@ -25,7 +24,6 @@ interface Props {
 
 const ConnectionsSidebar: React.FC<Props> = ({
   open,
-  active,
   onClose,
   connections,
   selectedConnection,
@@ -43,6 +41,22 @@ const ConnectionsSidebar: React.FC<Props> = ({
 }) => {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [mounted, setMounted] = useState(open);
+  const [activeState, setActiveState] = useState(open);
+
+  useEffect(() => {
+    let t: number | undefined;
+    if (open) {
+      setMounted(true);
+      t = window.setTimeout(() => setActiveState(true), 10);
+    } else {
+      setActiveState(false);
+      t = window.setTimeout(() => setMounted(false), 220);
+    }
+    return () => {
+      if (t) window.clearTimeout(t);
+    };
+  }, [open]);
 
   const confirmDelete = (id: number) => {
     setPendingDeleteId(id);
@@ -66,14 +80,14 @@ const ConnectionsSidebar: React.FC<Props> = ({
     if (open) firstInputRef.current?.focus();
   }, [open]);
 
-  if (!open && !active) return null;
+  if (!mounted) return null;
 
   return (
     <div className="fixed inset-0 z-20">
       <div
         className={cn(
           'absolute inset-0 bg-black/50 transition-opacity duration-200',
-          active ? 'opacity-80' : 'opacity-0 pointer-events-none',
+          activeState ? 'opacity-80' : 'opacity-0 pointer-events-none',
         )}
         onClick={onClose}
         style={{ cursor: 'pointer' }}
@@ -82,7 +96,7 @@ const ConnectionsSidebar: React.FC<Props> = ({
         id="connections-sidebar"
         className={cn(
           'absolute right-0 top-0 h-full w-full sm:w-[420px] bg-gray-900 border-l border-gray-800 p-4 overflow-y-auto transform transition-all duration-200',
-          active ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-6',
+          activeState ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-6',
         )}
         role="dialog"
         aria-modal="true"

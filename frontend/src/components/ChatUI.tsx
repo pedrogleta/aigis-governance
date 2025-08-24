@@ -712,7 +712,6 @@ const ChatUI: React.FC = () => {
       {/* Connections sidebar */}
       <ConnectionsSidebar
         open={connectionsOpen}
-        active={connectionsOpen}
         onClose={() => setConnectionsOpen(false)}
         connections={connections}
         selectedConnection={selectedConnection}
