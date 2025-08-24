@@ -97,6 +97,16 @@ DO NOT respond with anything else besides just the raw JSON.
 </query_with_data>
 """
 
+    json_fixer_prompt = """
+You are a JSON fixing agent. Your job is to read a raw JSON, identify where it is broken and fix it.
+You should then output the fixed JSON.
+ONLY output the full fixed JSON.
+
+<json>
+    {json}
+</json>
+"""
+
     @tool
     def ask_analyst(query: str):
         """Asks for Data Analyst to build a plot with data you provide"""
@@ -109,6 +119,23 @@ DO NOT respond with anything else besides just the raw JSON.
         )
 
         vega_lite_spec = str(vega_lite_spec_message.content)
+
+        retries = 3
+        is_valid_json = False
+        while retries > 0 and is_valid_json is False:
+            try:
+                _ = json.loads(vega_lite_spec)
+                is_valid_json = True
+            except ValueError:
+                retries -= 1
+                attempt = model.invoke(
+                    [
+                        SystemMessage(
+                            content=json_fixer_prompt.format(json=vega_lite_spec)
+                        )
+                    ]
+                )
+                vega_lite_spec = str(attempt.content)
 
         return {"type": "vega_lite_spec", "spec": vega_lite_spec}
 
