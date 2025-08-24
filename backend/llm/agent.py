@@ -10,23 +10,13 @@ from core.types import AigisState
 from llm.model import qwen_llm_with_tools, tools
 from llm.prompts import aigis_prompt
 from dotenv import load_dotenv
-from app.helpers.user_connections import get_db_schema
 
 
 load_dotenv(override=True)
 
 
-def check_db_schema(state: AigisState):
-    if "db_schema" not in state:
-        connection = state.get("connection") if isinstance(state, dict) else None
-        db_schema = get_db_schema(connection=connection)
-        return {"db_schema": db_schema}
-
-    return {}
-
-
 def assistant(state: AigisState):
-    db_schema = state["db_schema"]
+    db_schema = state.get("db_schema", "No connection selected by the user.")
 
     sys_message = SystemMessage(content=aigis_prompt.format(db_schema=db_schema))
 
@@ -39,12 +29,10 @@ def assistant(state: AigisState):
 
 builder = StateGraph(AigisState)
 
-builder.add_node("check_db_schema", check_db_schema)
 builder.add_node("assistant", assistant)
 builder.add_node("tools", ToolNode(tools))
 
-builder.add_edge(START, "check_db_schema")
-builder.add_edge("check_db_schema", "assistant")
+builder.add_edge(START, "assistant")
 builder.add_conditional_edges("assistant", tools_condition)
 builder.add_edge("tools", "assistant")
 builder.add_edge("assistant", END)

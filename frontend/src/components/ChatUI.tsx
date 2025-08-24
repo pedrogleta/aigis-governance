@@ -374,9 +374,16 @@ const ChatUI: React.FC = () => {
     }
   };
 
-  const handleSelectConnection = (conn: UserConnection | null) => {
+  const handleSelectConnection = async (conn: UserConnection | null) => {
     setSelectedConnection(conn);
     apiService.setSelectedConnection(conn);
+    try {
+      if (conn?.id != null) {
+        await apiService.updateThreadConnection(conn.id);
+      }
+    } catch (e) {
+      console.warn('Failed to update thread connection', e);
+    }
   };
 
   const handleSaveConnection = async () => {

@@ -144,6 +144,19 @@ export class ApiService {
     return this.threadId;
   }
 
+  async updateThreadConnection(userConnectionId: number): Promise<void> {
+    const threadId = await this.ensureThread();
+    const resp = await fetch(`${this.baseUrl}/chat/${threadId}/connection`, {
+      method: 'POST',
+      headers: this.getAuthHeaders('application/json'),
+      body: JSON.stringify({ user_connection_id: userConnectionId }),
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(text || `Failed to update connection: ${resp.status}`);
+    }
+  }
+
   // Send a chat message to the agent with streaming support
   async sendMessageStreaming(
     message: string,

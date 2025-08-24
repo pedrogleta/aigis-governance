@@ -9,6 +9,7 @@ from langgraph.graph.state import RunnableConfig
 
 from app.helpers.langgraph import stream_langgraph_events
 from llm.agent import graph
+from app.helpers.user_connections import get_db_schema
 from core.types import AigisState
 from app.state import active_threads
 from core.database import get_postgres_db
@@ -133,13 +134,13 @@ async def get_thread_state(thread_id: str):
         thread_config = cast(RunnableConfig, {"configurable": {"thread_id": thread_id}})
 
         state = graph.get_state(thread_config)
-
-        db_schema = state.values["db_schema"] if "db_schema" in state.values else ""
+        db_schema = state.values.get("db_schema", "")
+        connection = state.values.get("connection")
 
         return {
             "thread_id": thread_id,
             "thread_info": active_threads[thread_id],
-            "graph_state": {"db_schema": db_schema},
+            "graph_state": {"db_schema": db_schema, "connection": connection},
             "status": "active",
         }
 
@@ -147,3 +148,36 @@ async def get_thread_state(thread_id: str):
         raise HTTPException(
             status_code=500, detail=f"Error retrieving graph state: {str(e)}"
         )
+
+
+@router.post("/{thread_id}/connection")
+async def update_thread_connection(
+    thread_id: str,
+    payload: dict,
+    current_user: User = Depends(get_current_user),
+):
+    """Update the graph state for a thread with a new connection, and precompute db_schema."""
+    if thread_id not in active_threads:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    user_connection_id = payload.get("user_connection_id")
+    if user_connection_id is None:
+        raise HTTPException(status_code=400, detail="user_connection_id is required")
+
+    thread_config = cast(RunnableConfig, {"configurable": {"thread_id": thread_id}})
+
+    # Build minimal connection reference
+    connection_ref = {"user_id": current_user.id, "connection_id": user_connection_id}
+
+    # Compute db_schema for the new connection and update graph state
+    db_schema = get_db_schema(connection=connection_ref)
+
+    try:
+        # Update the checkpointer state with both connection and db_schema
+        graph.update_state(
+            thread_config, {"connection": connection_ref, "db_schema": db_schema}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update state: {str(e)}")
+
+    return {"ok": True}
