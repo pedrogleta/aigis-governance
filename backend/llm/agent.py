@@ -24,7 +24,7 @@ def assistant(state: AigisState):
     )
 
     assistant_response = cast(
-        AIMessage, qwen_llm_with_tools.invoke([sys_message] + state["messages"])
+        AIMessage, gpt_oss_llm_with_tools.invoke([sys_message] + state["messages"])
     )
 
     return {"messages": [assistant_response]}
