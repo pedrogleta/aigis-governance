@@ -1,5 +1,9 @@
+import json
+from typing import Optional
+
+
 from core.database import db_manager
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 from crud.connection import user_connection_crud
 from core.crypto import decrypt_secret
 from core.config import settings
@@ -145,3 +149,59 @@ def get_db_schema(connection: dict | None = None) -> str:
 
     db_schema = "\n".join(md_parts)
     return db_schema
+
+
+def execute_query(connection: dict, sql_query: str):
+    try:
+        conn_ref = connection
+        user_id = conn_ref.get("user_id")
+        connection_id = conn_ref.get("connection_id") or conn_ref.get("id")
+        if user_id is None or connection_id is None:
+            raise ValueError("Missing connection reference in state")
+
+        # Fetch full connection record from the main DB and decrypt password
+        with db_manager.get_postgres_session_context() as db:
+            record = user_connection_crud.get_user_connection(
+                db, user_id=int(user_id), connection_id=int(connection_id)
+            )
+            if record is None:
+                raise ValueError("User connection not found")
+
+            password: Optional[str] = None
+            if record.encrypted_password and record.iv:
+                try:
+                    password = decrypt_secret(
+                        record.encrypted_password,
+                        record.iv,
+                        settings.master_encryption_key,
+                    )
+                except Exception:
+                    password = None
+
+            engine = db_manager.get_user_connection_engine(
+                int(user_id),
+                int(connection_id),
+                (record.db_type or "").lower(),
+                record.host,
+                int(record.port) if record.port is not None else None,
+                record.username,
+                password,
+                record.database_name,
+            )
+
+        # Execute the query and serialize results
+        with engine.connect() as conn:
+            result = conn.execute(text(sql_query))
+            if hasattr(result, "returns_rows") and result.returns_rows:
+                rows = result.mappings().fetchmany(50)
+                data = [dict(row) for row in rows]
+                columns = list(rows[0].keys()) if rows else []
+                sql_execution_result = json.dumps({"columns": columns, "rows": data})
+            else:
+                rowcount = getattr(result, "rowcount", None)
+                sql_execution_result = json.dumps({"rowcount": rowcount})
+
+        return (sql_execution_result, None)
+
+    except Exception as e:
+        return (None, e)
