@@ -42,6 +42,7 @@ const ConnectionsSidebar: React.FC<Props> = ({
 }) => {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [showFormModal, setShowFormModal] = useState(false);
 
   const confirmDelete = (id: number) => {
     setPendingDeleteId(id);
@@ -62,8 +63,8 @@ const ConnectionsSidebar: React.FC<Props> = ({
   // simple focus trap: focus first input when opening
   const firstInputRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
-    if (open) firstInputRef.current?.focus();
-  }, [open]);
+    if (open || showFormModal) firstInputRef.current?.focus();
+  }, [open, showFormModal]);
 
   return (
     <AnimatePresence>
@@ -105,139 +106,12 @@ const ConnectionsSidebar: React.FC<Props> = ({
               </button>
             </div>
 
-            <div className="space-y-2 mb-6">
-              <label className="block text-sm text-gray-300">Name</label>
-              <input
-                ref={firstInputRef}
-                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
-                value={formState.name || ''}
-                onChange={(e) =>
-                  setFormState({ ...formState, name: e.target.value })
-                }
-                placeholder="My Postgres"
-              />
-              <label className="block text-sm text-gray-300 mt-3">Type</label>
-              <select
-                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
-                value={formState.db_type}
-                onChange={(e) =>
-                  setFormState({
-                    ...formState,
-                    db_type: e.target.value as 'postgres' | 'sqlite',
-                  })
-                }
-              >
-                <option value="postgres">PostgreSQL</option>
-                <option value="sqlite">SQLite</option>
-              </select>
-
-              {formState.db_type === 'sqlite' ? (
-                <>
-                  <label className="block text-sm text-gray-300 mt-3">
-                    File path
-                  </label>
-                  <input
-                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
-                    value={formState.host || ''}
-                    onChange={(e) =>
-                      setFormState({ ...formState, host: e.target.value })
-                    }
-                    placeholder="/path/to/db.sqlite"
-                  />
-                </>
-              ) : (
-                <>
-                  <label className="block text-sm text-gray-300 mt-3">
-                    Host
-                  </label>
-                  <input
-                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
-                    value={formState.host || ''}
-                    onChange={(e) =>
-                      setFormState({ ...formState, host: e.target.value })
-                    }
-                    placeholder="localhost"
-                  />
-                  <label className="block text-sm text-gray-300 mt-3">
-                    Port
-                  </label>
-                  <input
-                    type="number"
-                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
-                    value={formState.port || ''}
-                    onChange={(e) =>
-                      setFormState({
-                        ...formState,
-                        port: Number(e.target.value),
-                      })
-                    }
-                    placeholder="5432"
-                  />
-                  <label className="block text-sm text-gray-300 mt-3">
-                    Username
-                  </label>
-                  <input
-                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
-                    value={formState.username || ''}
-                    onChange={(e) =>
-                      setFormState({ ...formState, username: e.target.value })
-                    }
-                    placeholder="postgres"
-                  />
-                  <label className="block text-sm text-gray-300 mt-3">
-                    Database
-                  </label>
-                  <input
-                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
-                    value={formState.database_name || ''}
-                    onChange={(e) =>
-                      setFormState({
-                        ...formState,
-                        database_name: e.target.value,
-                      })
-                    }
-                    placeholder="example_db"
-                  />
-                  <label className="block text-sm text-gray-300 mt-3">
-                    Password
-                  </label>
-                  <input
-                    type="password"
-                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
-                    onChange={(e) =>
-                      setFormState({ ...formState, password: e.target.value })
-                    }
-                    placeholder={
-                      editingId ? 'Leave blank to keep current' : 'Password'
-                    }
-                  />
-                </>
-              )}
-
-              <div className="flex items-center space-x-2 mt-4">
-                <button
-                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded cursor-pointer"
-                  onClick={onSave}
-                >
-                  {editingId ? 'Update' : 'Create'}
-                </button>
-                <button
-                  className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded cursor-pointer"
-                  onClick={() => {
-                    setEditingId(null);
-                    setFormState({ name: '', db_type: 'postgres' });
-                  }}
-                >
-                  Clear
-                </button>
-              </div>
-            </div>
-
+            {/* Connections list shown first */}
             <div>
               <h3 className="text-sm font-semibold text-gray-300 mb-2">
                 Your connections
               </h3>
-              <div className="space-y-2">
+              <div className="space-y-2 mb-6">
                 {connections.map((c) => (
                   <div
                     key={c.id}
@@ -274,7 +148,6 @@ const ConnectionsSidebar: React.FC<Props> = ({
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
-                      {/* Select button removed: row + radio handle selection */}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -290,6 +163,7 @@ const ConnectionsSidebar: React.FC<Props> = ({
                         onClick={(e) => {
                           e.stopPropagation();
                           onEdit(c);
+                          setShowFormModal(true);
                         }}
                         className="text-xs px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-200 transition-colors"
                         style={{ cursor: 'pointer' }}
@@ -315,14 +189,25 @@ const ConnectionsSidebar: React.FC<Props> = ({
                   </div>
                 )}
               </div>
-              <div className="mt-3">
-                <button
-                  className="text-xs text-gray-400 underline cursor-pointer"
-                  onClick={onRefresh}
-                >
-                  Refresh list
-                </button>
-              </div>
+            </div>
+
+            <div className="mt-3 flex items-center justify-between">
+              <button
+                className="text-xs text-gray-400 underline cursor-pointer"
+                onClick={onRefresh}
+              >
+                Refresh list
+              </button>
+              <button
+                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded text-sm cursor-pointer"
+                onClick={() => {
+                  setEditingId(null);
+                  setFormState({ name: '', db_type: 'postgres' });
+                  setShowFormModal(true);
+                }}
+              >
+                Create connection
+              </button>
             </div>
 
             <ConfirmationModal
@@ -332,6 +217,195 @@ const ConnectionsSidebar: React.FC<Props> = ({
               onConfirm={handleConfirm}
               onCancel={handleCancel}
             />
+
+            {/* Form modal for create / edit */}
+            <AnimatePresence>
+              {showFormModal && (
+                <div className="fixed inset-0 z-30">
+                  <motion.div
+                    className="absolute inset-0 bg-black/50"
+                    onClick={() => setShowFormModal(false)}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 0.6 }}
+                    exit={{ opacity: 0 }}
+                  />
+                  <motion.div
+                    className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg bg-gray-900 border border-gray-800 rounded p-6 z-40"
+                    initial={{ scale: 0.95, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.95, opacity: 0 }}
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-white">
+                        {editingId ? 'Edit connection' : 'Create connection'}
+                      </h3>
+                      <button
+                        onClick={() => setShowFormModal(false)}
+                        className="text-gray-400 hover:text-gray-200 cursor-pointer"
+                      >
+                        Close
+                      </button>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="block text-sm text-gray-300">
+                        Name
+                      </label>
+                      <input
+                        ref={firstInputRef}
+                        className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
+                        value={formState.name || ''}
+                        onChange={(e) =>
+                          setFormState({ ...formState, name: e.target.value })
+                        }
+                        placeholder="My Postgres"
+                      />
+                      <label className="block text-sm text-gray-300 mt-3">
+                        Type
+                      </label>
+                      <select
+                        className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
+                        value={formState.db_type}
+                        onChange={(e) =>
+                          setFormState({
+                            ...formState,
+                            db_type: e.target.value as 'postgres' | 'sqlite',
+                          })
+                        }
+                      >
+                        <option value="postgres">PostgreSQL</option>
+                        <option value="sqlite">SQLite</option>
+                      </select>
+
+                      {formState.db_type === 'sqlite' ? (
+                        <>
+                          <label className="block text-sm text-gray-300 mt-3">
+                            File path
+                          </label>
+                          <input
+                            className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
+                            value={formState.host || ''}
+                            onChange={(e) =>
+                              setFormState({
+                                ...formState,
+                                host: e.target.value,
+                              })
+                            }
+                            placeholder="/path/to/db.sqlite"
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <label className="block text-sm text-gray-300 mt-3">
+                            Host
+                          </label>
+                          <input
+                            className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
+                            value={formState.host || ''}
+                            onChange={(e) =>
+                              setFormState({
+                                ...formState,
+                                host: e.target.value,
+                              })
+                            }
+                            placeholder="localhost"
+                          />
+                          <label className="block text-sm text-gray-300 mt-3">
+                            Port
+                          </label>
+                          <input
+                            type="number"
+                            className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
+                            value={formState.port || ''}
+                            onChange={(e) =>
+                              setFormState({
+                                ...formState,
+                                port: Number(e.target.value),
+                              })
+                            }
+                            placeholder="5432"
+                          />
+                          <label className="block text-sm text-gray-300 mt-3">
+                            Username
+                          </label>
+                          <input
+                            className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
+                            value={formState.username || ''}
+                            onChange={(e) =>
+                              setFormState({
+                                ...formState,
+                                username: e.target.value,
+                              })
+                            }
+                            placeholder="postgres"
+                          />
+                          <label className="block text-sm text-gray-300 mt-3">
+                            Database
+                          </label>
+                          <input
+                            className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
+                            value={formState.database_name || ''}
+                            onChange={(e) =>
+                              setFormState({
+                                ...formState,
+                                database_name: e.target.value,
+                              })
+                            }
+                            placeholder="example_db"
+                          />
+                          <label className="block text-sm text-gray-300 mt-3">
+                            Password
+                          </label>
+                          <input
+                            type="password"
+                            className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2"
+                            onChange={(e) =>
+                              setFormState({
+                                ...formState,
+                                password: e.target.value,
+                              })
+                            }
+                            placeholder={
+                              editingId
+                                ? 'Leave blank to keep current'
+                                : 'Password'
+                            }
+                          />
+                        </>
+                      )}
+
+                      <div className="flex items-center space-x-2 mt-4">
+                        <button
+                          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded cursor-pointer"
+                          onClick={() => {
+                            onSave();
+                            setShowFormModal(false);
+                            setEditingId(null);
+                          }}
+                        >
+                          {editingId ? 'Update' : 'Create'}
+                        </button>
+                        <button
+                          className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded cursor-pointer"
+                          onClick={() => {
+                            setEditingId(null);
+                            setFormState({ name: '', db_type: 'postgres' });
+                          }}
+                        >
+                          Clear
+                        </button>
+                        <button
+                          className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded cursor-pointer"
+                          onClick={() => setShowFormModal(false)}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
           </motion.div>
         </div>
       )}
