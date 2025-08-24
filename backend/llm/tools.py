@@ -87,11 +87,30 @@ DO NOT respond with anything else besides just the raw SQL code.
 def make_ask_analyst(model: Optional[BaseChatModel] = None):
     """Factory that returns the ask_analyst tool bound to an optional model."""
 
+    ask_analyst_prompt = """
+You are a Vega-Lite writing agent that ONLY responds with raw Vega-Lite JSON spec.
+You will be provided with a natural language query and relevant data. Using the data and the query, build a Vega-Lite JSON spec to build the requested visualization.
+DO NOT respond with anything else besides just the raw JSON.
+
+<query_with_data>
+    {query_with_data}
+</query_with_data>
+"""
+
     @tool
     def ask_analyst(query: str):
         """Asks for Data Analyst to build a plot with data you provide"""
-        _ = model
-        return {"status": "not-implemented", "query": query}
+
+        if not model:
+            return "Error: app configuration error. Tell the user it's an internal server error."
+
+        vega_lite_spec_message = model.invoke(
+            [SystemMessage(content=ask_analyst_prompt.format(query=query))]
+        )
+
+        vega_lite_spec = str(vega_lite_spec_message.content)
+
+        return vega_lite_spec
 
     return ask_analyst
 
