@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = Field(
         default=30, description="Access token expiration time"
     )
+    # Master key for encrypting user-provided connection passwords
+    master_encryption_key: str = Field(
+        default="", description="Master encryption key for user connection secrets"
+    )
 
     # API settings
     api_prefix: str = Field(default="/api/v1", description="API prefix")

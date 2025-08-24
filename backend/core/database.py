@@ -2,7 +2,7 @@
 
 # There will be a single main app connection to PostgreSQL but there will also be custom User Created database connections to SQLite.
 
-from typing import Generator
+from typing import Generator, Dict, Tuple, Any
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import declarative_base  # type: ignore
 from sqlalchemy.orm import sessionmaker, Session
@@ -23,6 +23,11 @@ class DatabaseManager:
         self._sqlite_engine = None
         self._postgres_session_factory = None
         self._sqlite_session_factory = None
+        # cache of user connection engines keyed by (user_id, connection_id)
+        self._user_connection_engines: Dict[Tuple[int, int], Any] = {}
+        self._user_connection_session_factories: Dict[
+            Tuple[int, int], sessionmaker
+        ] = {}
 
     def _create_postgres_engine(self):
         """Create PostgreSQL engine with connection pooling."""
@@ -175,6 +180,81 @@ class DatabaseManager:
             self._postgres_engine.dispose()
         if self._sqlite_engine:
             self._sqlite_engine.dispose()
+        # dispose user connection engines
+        for engine in self._user_connection_engines.values():
+            try:
+                engine.dispose()
+            except Exception:
+                pass
+        self._user_connection_engines.clear()
+        self._user_connection_session_factories.clear()
+
+    # --- User connection dynamic engines ---
+    def get_user_connection_engine(
+        self,
+        user_id: int,
+        connection_id: int,
+        db_type: str,
+        host: str | None,
+        port: int | None,
+        username: str | None,
+        password: str | None,
+        database_name: str | None,
+    ):
+        key = (user_id, connection_id)
+        if key in self._user_connection_engines:
+            return self._user_connection_engines[key]
+
+        if db_type.lower() == "sqlite":
+            # host is file path
+            url = f"sqlite:///{host}"
+            engine = create_engine(
+                url,
+                connect_args={"check_same_thread": False, "timeout": 20},
+                poolclass=StaticPool,
+                echo=settings.debug,
+            )
+
+            @event.listens_for(engine, "connect")
+            def _sqlite_fk(dbapi_connection, connection_record):
+                cursor = dbapi_connection.cursor()
+                cursor.execute("PRAGMA foreign_keys=ON")
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.close()
+        elif db_type.lower() in ("postgres", "postgresql"):
+            # Build postgres URL
+            auth = (
+                f"{username}:{password}@"
+                if username and password
+                else f"{username}@"
+                if username
+                else ""
+            )
+            port_part = f":{port}" if port else ""
+            url = f"postgresql://{auth}{host}{port_part}/{database_name}"
+            engine = create_engine(
+                url,
+                pool_size=settings.database_pool_size,
+                max_overflow=settings.database_max_overflow,
+                pool_timeout=settings.database_pool_timeout,
+                pool_pre_ping=True,
+                echo=settings.debug,
+            )
+        else:
+            raise ValueError("Unsupported db_type")
+
+        self._user_connection_engines[key] = engine
+        self._user_connection_session_factories[key] = sessionmaker(
+            bind=engine, autocommit=False, autoflush=False
+        )
+        return engine
+
+    def get_user_connection_session(self, user_id: int, connection_id: int):
+        key = (user_id, connection_id)
+        factory = self._user_connection_session_factories.get(key)
+        if factory is None:
+            raise RuntimeError("User connection session factory not initialized")
+        return factory()
 
 
 # Create global database manager instance

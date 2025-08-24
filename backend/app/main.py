@@ -5,6 +5,7 @@ import uvicorn
 
 from app.routes.chat import router as chat_router
 from app.routes.auth import router as auth_router
+from app.routes.connections import router as connections_router
 from fastapi import Depends
 from core.database import get_postgres_db
 
@@ -24,6 +25,7 @@ app.add_middleware(
 # Store active threads (in production, use a proper database)
 app.include_router(chat_router)
 app.include_router(auth_router)
+app.include_router(connections_router)
 
 
 @app.get("/health")
