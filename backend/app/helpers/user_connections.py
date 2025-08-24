@@ -1,4 +1,4 @@
-from core.database import get_sqlite_engine, db_manager
+from core.database import db_manager
 from sqlalchemy import inspect
 
 
@@ -31,8 +31,6 @@ def get_db_schema(connection: dict | None = None) -> str:
         except Exception:
             engine = None
 
-    if engine is None:
-        engine = get_sqlite_engine()
     if engine is None:
         return ""
     inspector = inspect(engine)
