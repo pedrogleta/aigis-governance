@@ -1,285 +1,108 @@
-# Aigis Backend - Key Endpoints & Usage (FastAPI)
+# Agents, tools, and streaming (current implementation)
 
-This file documents the current backend API and important endpoints for the custom FastAPI backend (replaces the previous Google ADK api_server). It includes auth, chat (SSE streaming), and database notes.
+This document explains how the agent, tools, and streaming pipeline work today. It reflects the FastAPI + LangGraph implementation found under `backend/`.
 
-## Key Endpoints
+## Overview
 
-### Thread & Chat Endpoints
-- `POST /chat/thread` - Create a new chat thread. Returns `{"thread_id": "<uuid>"}`.
+- Conversation is thread‑based. The frontend creates a thread and then streams responses for each message.
+- A single LangGraph state machine orchestrates the assistant and its tools.
+- Two tools are implemented:
+  - ask_database – write SQL from NL + schema; execute against the user‑selected DB
+  - ask_analyst – produce a Vega‑Lite JSON spec from data for charting
+- Streaming uses Server‑Sent Events (SSE) with small, structured payloads.
 
-- `POST /chat/{thread_id}/message` - Send a message to a thread. Accepts a JSON body `{ "text": "..." }` and returns an SSE stream (media type `text/event-stream`) with incremental agent events.
+## Key files
 
-- `GET /chat/{thread_id}` - Get the message history and metadata for a thread.
+- Graph and tools
+  - `backend/llm/agent.py` – builds a LangGraph StateGraph over `AigisState`
+  - `backend/llm/model.py` – initializes chat models and binds tools
+  - `backend/llm/tools.py` – tool factories `make_ask_database`, `make_ask_analyst`
+  - `backend/llm/prompts.py` – system and tool prompts
+- State and helpers
+  - `backend/core/types.py` – `AigisState` extends `MessagesState` with `db_schema`, `connection`, `sql_result`
+  - `backend/app/helpers/user_connections.py` – resolves user connection, introspects schema, executes SQL
+  - `backend/app/helpers/langgraph.py` – `stream_langgraph_events` converts LangGraph stream to SSE
+- API
+  - `backend/app/routes/chat.py` – thread creation, message send (SSE), state view, set connection
 
-- `GET /chat/{thread_id}/state` - Retrieve the current agent/graph state for a thread (e.g., DB schema info) and thread status.
+## State shape
 
-### Artifact Management
-- `GET /apps/{app_name}/users/{user_id}/sessions/{session_id}/artifacts/{artifact_name}`
-  - Load a specific artifact
+`AigisState` includes:
+- `messages`: LangChain message list (managed by LangGraph)
+- `db_schema`: markdown snapshot of the connected DB (tables, columns, sample rows)
+- `connection`: minimal reference `{ user_id, connection_id }`
+- `sql_result`: last SQL execution result (JSON string: `{ columns: [], rows: [] }`)
 
-- `DELETE /apps/{app_name}/users/{user_id}/sessions/{session_id}/artifacts/{artifact_name}`
-  - Delete a specific artifact
+## Agent graph
 
-- `GET /apps/{app_name}/users/{user_id}/sessions/{session_id}/artifacts`
-  - List all artifact names for a session
+Defined in `backend/llm/agent.py`:
+- Nodes: `assistant`, `tools`
+- Edges: START → assistant → tools? → assistant → END (conditional via `tools_condition`)
+- Checkpointer: in‑memory (`MemorySaver`)
 
-### Agent Interaction
-The previous ADK endpoints (`/run`, `/run_sse`, etc.) are no longer used. The FastAPI chat routes above provide thread-based interaction and SSE streaming.
-  - **Sample Response Structure:**
-    ```
-    data: {"content":{"parts":[{"text":"I have access to the following tables..."}],"role":"model"},"partial":true}
-    data: {"content":{"parts":[{"text":" and views:"}],"role":"model"},"partial":true}
-    data: {"content":{"parts":[{"text":" Complete response content"}],"role":"model"},"partial":false}
-    ```
-  - **Message Types Supported:**
-    - **Text Messages:** Streaming text content with `partial: true/false` flags
-    - **Function Calls:** Agent tool invocations with function name, arguments, and ID
-    - **Function Responses:** Tool execution results with function name and response data
-    - **Invocation Metadata:** Session tracking with `invocationId`, `author`, and `actions`
+The `assistant` function:
+- Builds a `SystemMessage` from `aigis_prompt` with `db_schema` and `sql_result`
+- Invokes the bound model with tools; if the model calls a tool, control moves to the tools node
 
+## Tools
 
-### Frontend (React + TypeScript)
-- **Location:** `frontend/src/`
-- **Key Files:**
-  - `App.tsx` - Main chat interface with SSE streaming support
-  - `services/api.ts` - API service with `sendMessageStreaming()` method and Zod validation
-  - `components/MessageComponents.tsx` - Message type-specific rendering components
-  - `index.css` - Styling with streaming animations and indicators
+`llm/tools.py` defines factories that bind an LLM when the tool is created:
 
-### Backend (FastAPI)
-- **Location:** `backend/` (Python FastAPI app under `backend/app`)
-- **Server:** Run with `uvicorn app.main:app --reload` (development)
-- **Purpose:** Authentication, chat/streaming, database connections (Postgres primary, SQLite per-user DBs)
+- ask_database(query)
+  - Uses the bound model to generate raw SQL (prompt: `ask_database_prompt`)
+  - Executes SQL via `execute_query(connection, sql)` using SQLAlchemy and the dynamic engine for that user/connection
+  - On success: returns a `Command(update={ messages: [ToolMessage(...)] , sql_result: <json> })`
+  - On failure: returns a `Command(update={ messages: [ToolMessage("Query failed...")] })`
 
-There is no longer a separate `agent-gateway/` ADK server in the canonical runtime for this repository; agent logic is orchestrated inside the FastAPI app and associated modules.
+- ask_analyst(query)
+  - Uses the bound model to return a Vega‑Lite JSON spec string
+  - Attempts up to 3 automatic JSON fixes (`json_fixer_prompt`) if invalid
+  - Returns `{ type: "vega_lite_spec", spec: <json string> }`
 
+Both tools currently use the `gpt_oss` model configured in `llm/model.py`. Swap or extend via that module.
 
-### SSE Implementation Features
-- **Real-time Streaming:** Chat responses are streamed as Server-Sent Events from `/chat/{thread_id}/message`.
-- **Multi-message Support:** The stream can include function/tool calls and tool responses as separate events before the final text content.
-- **Message Type Differentiation:** Frontend distinguishes between function calls, function responses, and text parts.
+## Streaming
 
-## Project Structure Overview
+`app/helpers/langgraph.py` exposes `stream_langgraph_events` used by `POST /chat/{thread_id}/message`.
 
-```
-aigis-governance/
-├── frontend/                          # React frontend application
-│   └── src/
-├── backend/                           # FastAPI backend (Python)
-│   ├── app/
-│   │   ├── main.py                    # FastAPI app entry
-│   │   ├── routes/
-│   │   │   ├── auth.py               # Auth endpoints
-│   │   │   └── chat.py               # Chat endpoints + SSE
-│   └── core/
-│       └── database.py                # Database manager (Postgres + SQLite)
-├── docs/
-├── AGENTS.md                          # This file - API documentation
-├── README.md                          # Project overview
-└── SETUP.md                           # Setup instructions
-```
+Event format (SSE lines start with `data: `):
+- `{ type: "chunk", content: string }` – token/text chunks from the assistant
+- `{ type: "tool_result", content: any }` – tool outputs (including charts)
+- `{ type: "end", full_response: string }` – final aggregation for convenience
+- `{ type: "error", error: string }` – rare error case
 
-## Development Workflow
+Frontend maps these to components in `MessageComponents.tsx`:
+- Text: markdown with GFM; shows streaming cursor and progress during generation
+- Tool output: detects `{ type: "vega_lite_spec", spec }` and renders via `react‑vega`
 
-### Starting the Application
-This project now uses PM2 for process management. To start the application:
+## Connections and schema
 
-1. **Install PM2 globally** (if not already installed):
-   ```bash
-   npm install -g pm2
-   ```
+`/connections` endpoints manage per‑user connections stored in Postgres. Secrets are encrypted with AES‑GCM using `MASTER_ENCRYPTION_KEY`.
 
-2. **Start the setup and services**:
-   ```bash
-   npm run setup
-   ```
-   This starts the core services using PM2 configuration files.
+On thread connection update (`POST /chat/{thread_id}/connection`):
+- Server fetches the full record, decrypts password, builds an engine, introspects tables/columns, fetches up to 3 sample rows per table.
+- The resulting markdown is stored in `db_schema` in the graph state for prompt grounding.
 
-3. **Start the main application**:
-   ```bash
-   npm run dev
-   ```
-   This starts the main application using PM2.
+## Models and providers
 
-4. **Monitor processes**:
-   ```bash
-   npm run list      # List all running PM2 processes
-   npm run logs      # View logs from all processes
-   ```
+`llm/model.py` uses LangChain `init_chat_model`:
+- OSS via LM Studio: `openai/gpt-oss-20b`, `qwen/qwen3-8b` (default base_url from `LM_STUDIO_ENDPOINT`)
+- Optional: `deepseek-chat`
 
-### PM2 Process Management
-The project uses several PM2 configuration files:
-- `setup.config.js` - Core setup processes
-- `services.config.js` - Background services
-- `app.config.js` - Main application
+Bind your preferred model(s) and point `LM_STUDIO_ENDPOINT` accordingly.
 
-**Useful PM2 commands:**
-```bash
-npm run stop      # Stop the main application
-npm run cleanup   # Stop and remove all PM2 processes
-pm2 restart all   # Restart all processes
-pm2 reload all    # Zero-downtime reload of all processes
-```
+## Extending
 
-### Making Changes
-- **Frontend Changes:** Edit files in `frontend/src/`, changes auto-reload
-- **Agent Gateway Changes:** Restart the PM2 process after changes: `pm2 restart <process-name>` or `npm run dev`
-- **Backend Changes:** Restart the PM2 process after changes: `pm2 restart <process-name>` or `npm run setup`
-- **API Changes:** Update both frontend service and this documentation
-- **PM2 Configuration Changes:** After modifying PM2 config files, restart the affected processes
+- Add a new tool: implement a `@tool` in `llm/tools.py` (or a factory), return `Command(update=...)` when you need to update state/messages.
+- Add DB types: extend `DatabaseManager.get_user_connection_engine` to support new drivers.
+- Persist state: swap `MemorySaver` for a persistent checkpointer.
 
-### Testing SSE Functionality
-- **Basic Streaming:** Send a message in the chat interface and watch for real-time streaming response
-- **Function Call Testing:** Ask questions that trigger database queries (e.g., "How many people are over 30?")
-- **Message Type Verification:** Check that all three message types appear in sequence:
-  - Blue function call boxes
-  - Green function response boxes  
-  - Streaming text with real-time updates
-- **Console Monitoring:** Check browser console for SSE data parsing and message processing logs
-- **Timeout Testing:** Verify timeout handling with long requests
-- **Multi-message Streams:** Ensure all events in a single stream are displayed correctly
+## Testing
 
-## Message Types & Data Structures
+Basic route tests live in `backend/tests/`. Add unit tests for tools and DB helpers when changing behavior.
 
-### Backend SSE Event Types
-The backend sends various types of events through the SSE stream, each with different structures:
+## Notes
 
-#### 1. **Text Messages** (Streaming Content)
-```json
-{
-  "content": {
-    "parts": [{"text": "Streaming text content..."}],
-    "role": "model"
-  },
-  "partial": true,
-  "invocationId": "e-12345678-1234-1234-1234-123456789abc",
-  "author": "db_ds_multiagent",
-  "actions": {"stateDelta": {}, "artifactDelta": {}, "requestedAuthConfigs": {}},
-  "id": "unique-message-id",
-  "timestamp": 1755224903.126858
-}
-```
+- MinIO appears in compose but charts render from Vega‑Lite in the client; MinIO is not required for charts.
+- CORS is `*` in dev; adjust `core/config.py` and FastAPI CORS settings for production.
 
-#### 2. **Function Call Messages** (Tool Invocations)
-```json
-{
-  "content": {
-    "parts": [{
-      "functionCall": {
-        "id": "call_123",
-        "name": "call_db_agent",
-        "args": {"question": "How many people are over 30?"}
-      }
-    }],
-    "role": "model"
-  },
-  "partial": false,
-  "invocationId": "e-12345678-1234-1234-1234-123456789abc",
-  "author": "db_ds_multiagent"
-}
-```
-
-#### 3. **Function Response Messages** (Tool Results)
-```json
-{
-  "content": {
-    "parts": [{
-      "functionResponse": {
-        "id": "call_123",
-        "name": "call_db_agent",
-        "response": {
-          "result": "There are 2 people over 30 years old."
-        }
-      }
-    }],
-    "role": "user"
-  },
-  "invocationId": "e-12345678-1234-1234-1234-123456789abc",
-  "author": "db_ds_multiagent"
-}
-```
-
-#### 4. **Final Complete Messages** (End of Stream)
-```json
-{
-  "content": {
-    "parts": [{"text": "Complete final message with all content..."}],
-    "role": "model"
-  },
-  "partial": false,
-  "invocationId": "e-12345678-1234-1234-1234-123456789abc",
-  "author": "db_ds_multiagent"
-}
-```
-
-### Frontend Message Components
-The frontend renders different message types using specialized React components:
-
-#### **FunctionCallComponent**
-- **Visual Style:** Blue-themed box with function icon
-- **Content Display:** Function name, arguments, and ID
-- **Use Case:** Shows when the agent is calling a tool/function
-
-#### **FunctionResponseComponent**  
-- **Visual Style:** Green-themed box with checkmark icon
-- **Content Display:** Function name and execution results
-- **Use Case:** Shows the output/results of tool execution
-
-#### **TextComponent**
-- **Visual Style:** Standard text with markdown support
-- **Content Display:** Streaming text with real-time updates
-- **Use Case:** Displays the agent's natural language responses
-
-### Message Flow Example
-A typical conversation flow might include:
-1. **User Message:** "How many people are over 30?"
-2. **Function Call:** Blue box showing `call_db_agent` being invoked
-3. **Function Response:** Green box showing database query results
-4. **Text Response:** Streaming explanation of the results
-5. **Stream Complete:** Final complete message (not displayed to avoid duplication)
-
-## Key Implementation Notes
-
-### SSE Data Parsing & Message Types
-- **Zod Schema Validation:** Runtime validation of all incoming SSE messages using TypeScript-first schemas
-- **Schema Structure:** 
-  - `FunctionCallSchema`: Validates function call structure with `id`, `args`, and `name`
-  - `FunctionResponseSchema`: Validates function response with `id`, `name`, and `response.result`
-  - `PartSchema`: Union type for text, functionCall, or functionResponse parts
-  - `ContentSchema`: Validates content structure with parts array and role
-  - `SSEMessageSchema`: Main schema for all SSE messages
-- **Message Type Detection:** Automatically identifies and routes different message types
-- **Text Messages:** Extracts and displays `content.parts[].text` with streaming support
-- **Function Calls:** Processes `content.parts[].functionCall` with name, args, and ID
-- **Function Responses:** Handles `content.parts[].functionResponse` with results
-- **Streaming Control:** Manages `partial: true/false` flags for real-time updates
-- **Metadata Processing:** Handles `invocationId`, `author`, and `actions` for session tracking
-- **Duplicate Prevention:** Avoids displaying final complete messages that duplicate streaming content
-
-### State Management & Message Rendering
-- **Message States:** Messages have `isStreaming` state for UI updates
-- **Streaming Flow:** Shows typing → streaming → complete states
-- **Message Components:** Different visual representations for each message type:
-  - **FunctionCallComponent:** Blue-themed boxes showing function name and arguments
-  - **FunctionResponseComponent:** Green-themed boxes displaying function results
-  - **TextComponent:** Standard text with markdown support and streaming indicators
-- **Multi-message Support:** Displays all message types in sequence within a single stream
-- **Error Handling:** Includes retry functionality and graceful error display
-- **Connection Monitoring:** Real-time connection status tracking
-
-### Performance Considerations
-- SSE connection is properly closed after completion
-- Timeout prevents hanging connections
-- Smooth scrolling and animations for good UX
-- Efficient message state updates
-
-## Future Enhancements
-
-- Connection recovery and auto-reconnect on the frontend
-- Message persistence and server-side history storage (currently in-memory threads)
-- Per-thread persistence backed by PostgreSQL
-- Better instrumentation and observability for SSE streams
-
----
-
-Keep this file updated as the backend and project structure evolve.
