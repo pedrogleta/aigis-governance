@@ -1,0 +1,19 @@
+# Keep host development artifacts out of the image build context
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+
+# Local databases and notebooks
+*.db
+*.db-shm
+*.db-wal
+playground.ipynb
+
+# Credentials and env files (mount or use secrets instead)
+credentials.json
+.env

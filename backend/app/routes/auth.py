@@ -13,6 +13,7 @@ from core.config import settings
 from auth.utils import create_access_token, verify_password
 from auth.dependencies import get_current_active_user, get_current_superuser
 from crud.user import user_crud
+from core.tenancy import make_user_schema_name, ensure_user_schema
 from schemas.user import (
     UserCreate,
     UserResponse,
@@ -45,6 +46,14 @@ async def register(user_create: UserCreate, db: Session = Depends(get_postgres_d
 
     # Create user
     user = user_crud.create_user(db, user_create)
+
+    # Create a dedicated Postgres schema for this user (best-effort)
+    try:
+        schema_name = make_user_schema_name(user.email, user.id)
+        ensure_user_schema(db, schema_name)
+    except Exception:
+        # Do not block registration if schema creation fails
+        pass
     return user
 
 
