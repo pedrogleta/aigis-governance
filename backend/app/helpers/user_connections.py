@@ -1,9 +1,10 @@
 import json
-from typing import Optional, TypedDict, Mapping, Any
+from typing import Optional, TypedDict, Any
 
 
 from core.database import db_manager
 from sqlalchemy import inspect, text
+from sqlalchemy.engine import Engine
 from crud.connection import user_connection_crud
 from core.crypto import decrypt_secret
 from core.config import settings
@@ -26,7 +27,9 @@ def get_db_schema(connection: ConnectionMinimalReference) -> str:
     - Fail soft: on any unexpected error, return an empty string.
     """
 
-    def _resolve_engine_from_connection(conn_ref: ConnectionMinimalReference):
+    def _resolve_engine_from_connection(
+        conn_ref: ConnectionMinimalReference,
+    ) -> tuple[Optional[Any | Engine], Optional[str], Optional[str]]:
         try:
             # Preferred minimal reference
             ref_user_id = conn_ref.get("user_id")
@@ -38,7 +41,7 @@ def get_db_schema(connection: ConnectionMinimalReference) -> str:
                     connection_id=int(ref_connection_id),
                 )
                 if record is None:
-                    return None
+                    return (None, None, None)
 
                 password = None
                 if record.encrypted_password and record.iv:
@@ -51,7 +54,7 @@ def get_db_schema(connection: ConnectionMinimalReference) -> str:
                     except Exception:
                         password = None
 
-                return db_manager.get_user_connection_engine(
+                engine = db_manager.get_user_connection_engine(
                     int(ref_user_id),
                     int(ref_connection_id),
                     (record.db_type or "").lower(),
@@ -61,11 +64,11 @@ def get_db_schema(connection: ConnectionMinimalReference) -> str:
                     password,
                     record.database_name,
                 )
+                return (engine, record.db_type, record.table_name)
 
         except Exception:
-            return None
-
-        return None
+            return (None, None, None)
+        return (None, None, None)
 
     def _db_type_label(engine) -> str:
         try:
@@ -135,7 +138,7 @@ def get_db_schema(connection: ConnectionMinimalReference) -> str:
         return lines
 
     # 1) Resolve engine
-    engine = _resolve_engine_from_connection(connection)
+    engine, db_type, table_name = _resolve_engine_from_connection(connection)
     if engine is None:
         return ""
 
@@ -147,6 +150,11 @@ def get_db_schema(connection: ConnectionMinimalReference) -> str:
             tables = inspector.get_table_names()
         except Exception:
             tables = []
+
+        # If this is a 'custom' connection, only include the specific table_name stored on the connection
+        if db_type == "custom":
+            if table_name is not None and table_name != "":
+                tables = [table_name]
 
         md_parts = [f"Database Type: {db_label}\n", "\n"]
 
