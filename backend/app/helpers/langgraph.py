@@ -16,7 +16,7 @@ from opik.integrations.langchain import OpikTracer
 load_dotenv()
 
 tracer = None
-if os.getenv("ENABLE_OPIK_TRACER"):
+if os.getenv("ENABLE_OPIK_TRACER") != 0:
     tracer = OpikTracer(graph=graph.get_graph(xray=True))
 else:
     tracer = None
