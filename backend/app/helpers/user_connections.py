@@ -14,7 +14,7 @@ class ConnectionMinimalReference(TypedDict):
     connection_id: str
 
 
-def get_db_schema(connection: ConnectionMinimalReference | None = None) -> str:
+def get_db_schema(connection: ConnectionMinimalReference) -> str:
     """Return a markdown summary of the connected database schema.
 
     Strategy
@@ -26,67 +26,42 @@ def get_db_schema(connection: ConnectionMinimalReference | None = None) -> str:
     - Fail soft: on any unexpected error, return an empty string.
     """
 
-    def _resolve_engine_from_connection(conn_ref: Mapping[str, Any] | None):
-        if not conn_ref:
-            return None
+    def _resolve_engine_from_connection(conn_ref: ConnectionMinimalReference):
         try:
             # Preferred minimal reference
             ref_user_id = conn_ref.get("user_id")
             ref_connection_id = conn_ref.get("connection_id")
-
-            if ref_user_id is not None and ref_connection_id is not None:
-                with db_manager.get_postgres_session_context() as db:
-                    record = user_connection_crud.get_user_connection(
-                        db,
-                        user_id=int(ref_user_id),
-                        connection_id=int(ref_connection_id),
-                    )
-                    if record is None:
-                        return None
-
-                    password = None
-                    if record.encrypted_password and record.iv:
-                        try:
-                            password = decrypt_secret(
-                                record.encrypted_password,
-                                record.iv,
-                                settings.master_encryption_key,
-                            )
-                        except Exception:
-                            password = None
-
-                    return db_manager.get_user_connection_engine(
-                        int(ref_user_id),
-                        int(ref_connection_id),
-                        (record.db_type or "").lower(),
-                        record.host,
-                        int(record.port) if record.port is not None else None,
-                        record.username,
-                        password,
-                        record.database_name,
-                    )
-
-            # Backward compatibility: full dict with connection details
-            user_id = conn_ref.get("user_id")
-            legacy_connection_id = conn_ref.get("id")
-            db_type = (conn_ref.get("db_type") or "").lower()
-            host = conn_ref.get("host")
-            port = conn_ref.get("port")
-            username = conn_ref.get("username")
-            password = conn_ref.get("password")
-            database_name = conn_ref.get("database_name")
-
-            if user_id is not None and legacy_connection_id is not None and db_type:
-                return db_manager.get_user_connection_engine(
-                    int(user_id),
-                    int(legacy_connection_id),
-                    db_type,
-                    host,
-                    int(port) if port is not None else None,
-                    username,
-                    password,
-                    database_name,
+            with db_manager.get_postgres_session_context() as db:
+                record = user_connection_crud.get_user_connection(
+                    db,
+                    user_id=int(ref_user_id),
+                    connection_id=int(ref_connection_id),
                 )
+                if record is None:
+                    return None
+
+                password = None
+                if record.encrypted_password and record.iv:
+                    try:
+                        password = decrypt_secret(
+                            record.encrypted_password,
+                            record.iv,
+                            settings.master_encryption_key,
+                        )
+                    except Exception:
+                        password = None
+
+                return db_manager.get_user_connection_engine(
+                    int(ref_user_id),
+                    int(ref_connection_id),
+                    (record.db_type or "").lower(),
+                    record.host,
+                    int(record.port) if record.port is not None else None,
+                    record.username,
+                    password,
+                    record.database_name,
+                )
+
         except Exception:
             return None
 
@@ -160,7 +135,7 @@ def get_db_schema(connection: ConnectionMinimalReference | None = None) -> str:
         return lines
 
     # 1) Resolve engine
-    engine = _resolve_engine_from_connection(connection or {})
+    engine = _resolve_engine_from_connection(connection)
     if engine is None:
         return ""
 
