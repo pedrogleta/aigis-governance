@@ -447,6 +447,49 @@ export class ApiService {
       console.warn('Failed to persist selected connection', e);
     }
   }
+
+  // ---------------
+  // CSV Import API
+  // ---------------
+  async uploadCsv(file: File): Promise<CsvUploadPreview> {
+    const form = new FormData();
+    form.append('file', file);
+    const headers: Record<string, string> = {};
+    if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
+    const resp = await fetch(`${this.baseUrl}/connections/import/csv/upload`, {
+      method: 'POST',
+      headers,
+      body: form,
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(text || `CSV upload failed: ${resp.status}`);
+    }
+    return (await resp.json()) as CsvUploadPreview;
+  }
+
+  async finishImportCsv(
+    filename: string,
+    raw: string,
+    columnTypes: Record<string, string>,
+  ): Promise<UserConnection> {
+    const form = new FormData();
+    form.append('filename', filename);
+    form.append('raw', raw);
+    form.append('column_types_json', JSON.stringify(columnTypes));
+    const headers: Record<string, string> = {};
+    if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
+    const resp = await fetch(`${this.baseUrl}/connections/import/csv/finish`, {
+      method: 'POST',
+      headers,
+      body: form,
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(text || `CSV import failed: ${resp.status}`);
+    }
+    return (await resp.json()) as UserConnection;
+  }
 }
 
 export const apiService = new ApiService();
@@ -484,3 +527,10 @@ export interface UserConnectionCreate {
 }
 
 export type UserConnectionUpdate = Partial<UserConnectionCreate>;
+
+export interface CsvUploadPreview {
+  filename: string;
+  headers: string[];
+  sample: string[][];
+  raw: string;
+}

@@ -1,7 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 // icons not needed here
 import { cn } from '../lib/utils';
-import type { UserConnection, UserConnectionCreate } from '../services/api';
+import type {
+  UserConnection,
+  UserConnectionCreate,
+  CsvUploadPreview,
+} from '../services/api';
+import { apiService } from '../services/api';
 import ConfirmationModal from './ConfirmationModal';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -43,6 +48,12 @@ const ConnectionsSidebar: React.FC<Props> = ({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [showFormModal, setShowFormModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importStep, setImportStep] = useState<'upload' | 'types'>('upload');
+  const [csvPreview, setCsvPreview] = useState<CsvUploadPreview | null>(null);
+  const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
+  const [importBusy, setImportBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const confirmDelete = (id: number) => {
     setPendingDeleteId(id);
@@ -198,16 +209,24 @@ const ConnectionsSidebar: React.FC<Props> = ({
               >
                 Refresh list
               </button>
-              <button
-                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded text-sm cursor-pointer"
-                onClick={() => {
-                  setEditingId(null);
-                  setFormState({ name: '', db_type: 'postgres' });
-                  setShowFormModal(true);
-                }}
-              >
-                Create connection
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-2 rounded text-sm cursor-pointer"
+                  onClick={() => setShowImportModal(true)}
+                >
+                  Import CSV
+                </button>
+                <button
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded text-sm cursor-pointer"
+                  onClick={() => {
+                    setEditingId(null);
+                    setFormState({ name: '', db_type: 'postgres' });
+                    setShowFormModal(true);
+                  }}
+                >
+                  Create connection
+                </button>
+              </div>
             </div>
 
             <ConfirmationModal
@@ -402,6 +421,197 @@ const ConnectionsSidebar: React.FC<Props> = ({
                         </button>
                       </div>
                     </div>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
+
+            {/* Import CSV modal */}
+            <AnimatePresence>
+              {showImportModal && (
+                <div className="fixed inset-0 z-30">
+                  <motion.div
+                    className="absolute inset-0 bg-black/50"
+                    onClick={() => setShowImportModal(false)}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 0.6 }}
+                    exit={{ opacity: 0 }}
+                  />
+                  <motion.div
+                    className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-gray-900 border border-gray-800 rounded p-6 z-40 max-h-[85vh] overflow-y-auto"
+                    initial={{ scale: 0.95, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.95, opacity: 0 }}
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-white">
+                        Import CSV
+                      </h3>
+                      <button
+                        onClick={() => setShowImportModal(false)}
+                        className="text-gray-400 hover:text-gray-200 cursor-pointer"
+                      >
+                        Close
+                      </button>
+                    </div>
+
+                    {importStep === 'upload' && (
+                      <div className="space-y-4">
+                        <p className="text-sm text-gray-300">
+                          Upload a CSV file to import into your personal
+                          Postgres schema.
+                        </p>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept=".csv,text/csv"
+                          className="w-full text-sm text-gray-200"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setImportBusy(true);
+                            try {
+                              const preview = await apiService.uploadCsv(file);
+                              setCsvPreview(preview);
+                              // init column types to text by default
+                              const init: Record<string, string> = {};
+                              for (const h of preview.headers) init[h] = 'text';
+                              setColumnTypes(init);
+                              setImportStep('types');
+                            } catch (err) {
+                              console.error(err);
+                              alert((err as Error).message);
+                            } finally {
+                              setImportBusy(false);
+                            }
+                          }}
+                        />
+                        {importBusy && (
+                          <div className="text-xs text-gray-400">
+                            Uploading…
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {importStep === 'types' && csvPreview && (
+                      <div className="space-y-4">
+                        <div>
+                          <div className="text-sm text-gray-300">
+                            File:{' '}
+                            <span className="text-gray-200">
+                              {csvPreview.filename}
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-400">
+                            Detected columns: {csvPreview.headers.length}
+                          </div>
+                        </div>
+                        <div className="overflow-auto border border-gray-800 rounded">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="bg-gray-800">
+                                <th className="text-left p-2 text-gray-200">
+                                  Column
+                                </th>
+                                <th className="text-left p-2 text-gray-200">
+                                  Type
+                                </th>
+                                <th className="text-left p-2 text-gray-200">
+                                  Sample
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {csvPreview.headers.map((h, idx) => (
+                                <tr
+                                  key={h}
+                                  className="border-t border-gray-800"
+                                >
+                                  <td className="p-2 text-gray-100">{h}</td>
+                                  <td className="p-2">
+                                    <select
+                                      className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-100"
+                                      value={columnTypes[h] || 'text'}
+                                      onChange={(e) =>
+                                        setColumnTypes({
+                                          ...columnTypes,
+                                          [h]: e.target.value,
+                                        })
+                                      }
+                                    >
+                                      <option value="text">Text</option>
+                                      <option value="integer">Integer</option>
+                                      <option value="float">Float</option>
+                                      <option value="boolean">Boolean</option>
+                                      <option value="date">Date</option>
+                                      <option value="timestamp">
+                                        Timestamp
+                                      </option>
+                                    </select>
+                                  </td>
+                                  <td className="p-2 text-gray-300">
+                                    <div className="flex flex-wrap gap-2">
+                                      {csvPreview.sample.map((r, rIdx) => (
+                                        <span
+                                          key={rIdx}
+                                          className="px-2 py-0.5 bg-gray-800 rounded text-xs text-gray-300"
+                                        >
+                                          {r[idx] ?? ''}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm cursor-pointer disabled:opacity-50"
+                            disabled={importBusy}
+                            onClick={async () => {
+                              if (!csvPreview) return;
+                              setImportBusy(true);
+                              try {
+                                const conn = await apiService.finishImportCsv(
+                                  csvPreview.filename,
+                                  csvPreview.raw,
+                                  columnTypes,
+                                );
+                                // refresh and select the newly created custom connection
+                                await onRefresh();
+                                onSelect(conn);
+                                setShowImportModal(false);
+                                // reset state
+                                setImportStep('upload');
+                                setCsvPreview(null);
+                                setColumnTypes({});
+                              } catch (err) {
+                                console.error(err);
+                                alert((err as Error).message);
+                              } finally {
+                                setImportBusy(false);
+                              }
+                            }}
+                          >
+                            {importBusy ? 'Importing…' : 'Finish import'}
+                          </button>
+                          <button
+                            className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm cursor-pointer"
+                            onClick={() => {
+                              setImportStep('upload');
+                              setCsvPreview(null);
+                              setColumnTypes({});
+                            }}
+                          >
+                            Back
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </motion.div>
                 </div>
               )}

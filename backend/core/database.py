@@ -10,6 +10,7 @@ from sqlalchemy.pool import StaticPool
 from contextlib import contextmanager
 
 from .config import settings
+from .tenancy import MAX_IDENTIFIER_LEN
 
 # Create declarative base for models
 Base = declarative_base()
@@ -240,6 +241,39 @@ class DatabaseManager:
                 pool_pre_ping=True,
                 echo=settings.debug,
             )
+        elif db_type.lower() == "custom":
+            # Custom connection points to the main Postgres DB but targets a specific schema.
+            # We use settings.postgres_url and set search_path to the provided schema name via database_name.
+            # database_name expected to be the schema name for this custom connection.
+            schema_name = (database_name or "").strip()
+            if not schema_name:
+                raise ValueError(
+                    "Custom connection requires schema name in database_name"
+                )
+            engine = create_engine(
+                settings.postgres_url,
+                pool_size=settings.database_pool_size,
+                max_overflow=settings.database_max_overflow,
+                pool_timeout=settings.database_pool_timeout,
+                pool_pre_ping=True,
+                echo=settings.debug,
+            )
+
+            @event.listens_for(engine, "connect")
+            def _set_search_path(dbapi_connection, connection_record):
+                try:
+                    cursor = dbapi_connection.cursor()
+                    # Quote identifier safely by simple replacement (schema is sanitized at creation time)
+                    # Avoid exceeding identifier length
+                    safe_schema = schema_name[:MAX_IDENTIFIER_LEN]
+                    cursor.execute(f'SET search_path TO "{safe_schema}"')
+                    cursor.close()
+                except Exception:
+                    # If setting search_path fails, proceed without raising to avoid breaking connection creation
+                    try:
+                        cursor.close()
+                    except Exception:
+                        pass
         else:
             raise ValueError("Unsupported db_type")
 
