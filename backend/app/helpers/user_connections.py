@@ -7,7 +7,6 @@ from sqlalchemy import inspect, text
 from crud.connection import user_connection_crud
 from core.crypto import decrypt_secret
 from core.config import settings
-from sqlalchemy import text
 
 
 def get_db_schema(connection: dict | None = None) -> str:
@@ -83,12 +82,23 @@ def get_db_schema(connection: dict | None = None) -> str:
     if engine is None:
         return ""
     inspector = inspect(engine)
+    # Determine and include the database type at the top of the markdown
+    try:
+        dialect_name = (engine.dialect.name or "").lower()
+        if "postgres" in dialect_name:
+            db_type_label = "PostgreSQL"
+        elif "sqlite" in dialect_name:
+            db_type_label = "SQLite"
+        else:
+            db_type_label = dialect_name.capitalize() if dialect_name else "Unknown"
+    except Exception:
+        db_type_label = "Unknown"
     try:
         tables = inspector.get_table_names()
     except Exception:
         tables = []
 
-    md_parts = []
+    md_parts = [f"Database Type: {db_type_label}\n"]
     # Build markdown for each table: title + markdown table (columns) + up to 3 sample rows
     try:
         with engine.connect() as conn:
