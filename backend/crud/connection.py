@@ -48,6 +48,7 @@ class UserConnectionCRUD:
             port=payload.port,
             username=payload.username,
             database_name=payload.database_name,
+            table_name=payload.table_name,
             encrypted_password=encrypted_password,
             iv=iv,
         )

@@ -43,6 +43,9 @@ class UserConnection(Base):
     port: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     username: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     database_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # When this connection represents a user-imported CSV table in their schema,
+    # this stores the table name created for that CSV.
+    table_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     # Metadata
     created_at: Mapped[datetime] = mapped_column(
@@ -67,6 +70,7 @@ class UserConnection(Base):
             "port": self.port,
             "username": self.username,
             "database_name": self.database_name,
+            "table_name": self.table_name,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }

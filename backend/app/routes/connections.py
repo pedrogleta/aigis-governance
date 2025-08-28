@@ -313,6 +313,7 @@ async def finish_import_csv(
         port=None,
         username=None,
         database_name=schema_name,
+        table_name=table_name,
         password=None,
     )
     record = user_connection_crud.create_user_connection(

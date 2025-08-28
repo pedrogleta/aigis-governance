@@ -10,6 +10,11 @@ class UserConnectionBase(BaseModel):
     port: Optional[int] = Field(None, ge=1, le=65535, description="Port for DB")
     username: Optional[str] = Field(None)
     database_name: Optional[str] = Field(None)
+    table_name: Optional[str] = Field(
+        None,
+        description="When a CSV is imported into user's schema, stores the created table name",
+        max_length=255,
+    )
 
 
 class UserConnectionCreate(UserConnectionBase):
@@ -23,6 +28,7 @@ class UserConnectionUpdate(BaseModel):
     port: Optional[int] = Field(None, ge=1, le=65535)
     username: Optional[str] = Field(None)
     database_name: Optional[str] = Field(None)
+    table_name: Optional[str] = Field(None, max_length=255)
     password: Optional[str] = Field(None)
 
 
