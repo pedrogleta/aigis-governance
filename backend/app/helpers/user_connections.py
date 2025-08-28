@@ -1,5 +1,5 @@
 import json
-from typing import Optional, TypedDict
+from typing import Optional, TypedDict, Mapping, Any
 
 
 from core.database import db_manager
@@ -15,146 +15,186 @@ class ConnectionMinimalReference(TypedDict):
 
 
 def get_db_schema(connection: ConnectionMinimalReference | None = None) -> str:
-    # Determine engine based on provided connection reference (user_id, connection_id)
-    engine = None
-    if connection:
+    """Return a markdown summary of the connected database schema.
+
+    Strategy
+    - Resolve an SQLAlchemy Engine from either a minimal reference (user_id, connection_id)
+      or a legacy full connection dict.
+    - Use Inspector to list tables and columns.
+    - For each table, render a small markdown with up to N sample rows using
+      a cross-dialect compatible query for LIMIT/TOP.
+    - Fail soft: on any unexpected error, return an empty string.
+    """
+
+    def _resolve_engine_from_connection(conn_ref: Mapping[str, Any] | None):
+        if not conn_ref:
+            return None
         try:
-            # Prefer minimal reference { user_id, connection_id }
-            ref_user_id = connection.get("user_id")
-            ref_connection_id = connection.get("connection_id")
+            # Preferred minimal reference
+            ref_user_id = conn_ref.get("user_id")
+            ref_connection_id = conn_ref.get("connection_id")
 
             if ref_user_id is not None and ref_connection_id is not None:
-                # Fetch full connection details from main DB and decrypt password if present
                 with db_manager.get_postgres_session_context() as db:
                     record = user_connection_crud.get_user_connection(
                         db,
                         user_id=int(ref_user_id),
                         connection_id=int(ref_connection_id),
                     )
+                    if record is None:
+                        return None
 
-                    if record is not None:
-                        db_type = (record.db_type or "").lower()
-                        host = record.host
-                        port = record.port
-                        username = record.username
-                        database_name = record.database_name
-                        password = None
-                        if record.encrypted_password and record.iv:
-                            try:
-                                password = decrypt_secret(
-                                    record.encrypted_password,
-                                    record.iv,
-                                    settings.master_encryption_key,
-                                )
-                            except Exception:
-                                password = None
+                    password = None
+                    if record.encrypted_password and record.iv:
+                        try:
+                            password = decrypt_secret(
+                                record.encrypted_password,
+                                record.iv,
+                                settings.master_encryption_key,
+                            )
+                        except Exception:
+                            password = None
 
-                        engine = db_manager.get_user_connection_engine(
-                            int(ref_user_id),
-                            int(ref_connection_id),
-                            db_type,
-                            host,
-                            int(port) if port is not None else None,
-                            username,
-                            password,
-                            database_name,
-                        )
-            else:
-                # Backward compatibility: full connection dict provided
-                user_id = connection.get("user_id")
-                connection_id = connection.get("id")
-                db_type = (connection.get("db_type") or "").lower()
-                host = connection.get("host")
-                port = connection.get("port")
-                username = connection.get("username")
-                password = connection.get("password")
-                database_name = connection.get("database_name")
-
-                if user_id is not None and connection_id is not None and db_type:
-                    engine = db_manager.get_user_connection_engine(
-                        int(user_id),
-                        int(connection_id),
-                        db_type,
-                        host,
-                        int(port) if port is not None else None,
-                        username,
+                    return db_manager.get_user_connection_engine(
+                        int(ref_user_id),
+                        int(ref_connection_id),
+                        (record.db_type or "").lower(),
+                        record.host,
+                        int(record.port) if record.port is not None else None,
+                        record.username,
                         password,
-                        database_name,
+                        record.database_name,
                     )
-        except Exception:
-            engine = None
 
+            # Backward compatibility: full dict with connection details
+            user_id = conn_ref.get("user_id")
+            legacy_connection_id = conn_ref.get("id")
+            db_type = (conn_ref.get("db_type") or "").lower()
+            host = conn_ref.get("host")
+            port = conn_ref.get("port")
+            username = conn_ref.get("username")
+            password = conn_ref.get("password")
+            database_name = conn_ref.get("database_name")
+
+            if user_id is not None and legacy_connection_id is not None and db_type:
+                return db_manager.get_user_connection_engine(
+                    int(user_id),
+                    int(legacy_connection_id),
+                    db_type,
+                    host,
+                    int(port) if port is not None else None,
+                    username,
+                    password,
+                    database_name,
+                )
+        except Exception:
+            return None
+
+        return None
+
+    def _db_type_label(engine) -> str:
+        try:
+            name = (engine.dialect.name or "").lower()
+            if "postgres" in name:
+                return "PostgreSQL"
+            if "sqlite" in name:
+                return "SQLite"
+            if "mssql" in name or "sqlserver" in name:
+                return "SQL Server"
+            if "oracle" in name:
+                return "Oracle"
+            if "mysql" in name:
+                return "MySQL"
+            return name.capitalize() if name else "Unknown"
+        except Exception:
+            return "Unknown"
+
+    def _quote_identifier(engine, identifier: str) -> str:
+        try:
+            return engine.dialect.identifier_preparer.quote(identifier)
+        except Exception:
+            # Fallback to safe double quotes if preparer unavailable
+            return f'"{identifier}"'
+
+    def _sample_query(engine, table_name: str, limit: int) -> str:
+        dialect = (engine.dialect.name or "").lower()
+        qtable = _quote_identifier(engine, table_name)
+        if "mssql" in dialect or "sqlserver" in dialect:
+            return f"SELECT TOP {limit} * FROM {qtable};"
+        if "oracle" in dialect:
+            return f"SELECT * FROM {qtable} FETCH FIRST {limit} ROWS ONLY"
+        # Default LIMIT works for PostgreSQL, SQLite, MySQL, DuckDB, etc.
+        return f"SELECT * FROM {qtable} LIMIT {limit};"
+
+    def _get_table_columns(inspector, table_name: str) -> list[str]:
+        try:
+            return [c.get("name") for c in inspector.get_columns(table_name)]
+        except Exception:
+            return []
+
+    def _render_markdown_table(
+        col_names: list[str], rows: list[tuple | list]
+    ) -> list[str]:
+        if not col_names:
+            return ["_No columns found._\n", "\n"]
+
+        lines: list[str] = []
+        header = "| " + " | ".join(col_names) + " |"
+        separator = "| " + " | ".join(["---"] * len(col_names)) + " |"
+        lines.append(header)
+        lines.append(separator)
+
+        if rows:
+            for row in rows:
+                cells = []
+                for val in row:
+                    s = "" if val is None else str(val)
+                    s = s.replace("|", "\\|")
+                    cells.append(s)
+                lines.append("| " + " | ".join(cells) + " |")
+        else:
+            for _ in range(3):
+                lines.append("| " + " | ".join([""] * len(col_names)) + " |")
+
+        lines.append("\n")
+        return lines
+
+    # 1) Resolve engine
+    engine = _resolve_engine_from_connection(connection or {})
     if engine is None:
         return ""
-    inspector = inspect(engine)
-    # Determine and include the database type at the top of the markdown
-    try:
-        dialect_name = (engine.dialect.name or "").lower()
-        if "postgres" in dialect_name:
-            db_type_label = "PostgreSQL"
-        elif "sqlite" in dialect_name:
-            db_type_label = "SQLite"
-        else:
-            db_type_label = dialect_name.capitalize() if dialect_name else "Unknown"
-    except Exception:
-        db_type_label = "Unknown"
-    try:
-        tables = inspector.get_table_names()
-    except Exception:
-        tables = []
 
-    md_parts = [f"Database Type: {db_type_label}\n"]
-    # Build markdown for each table: title + markdown table (columns) + up to 3 sample rows
+    # 2) Prepare inspector and metadata
     try:
+        inspector = inspect(engine)
+        db_label = _db_type_label(engine)
+        try:
+            tables = inspector.get_table_names()
+        except Exception:
+            tables = []
+
+        md_parts = [f"Database Type: {db_label}\n", "\n"]
+
+        SAMPLE_LIMIT = 3
         with engine.connect() as conn:
             for table in tables:
                 md_parts.append(f"### {table}\n")
+                col_names = _get_table_columns(inspector, table)
 
-                # Get columns
-                try:
-                    cols = inspector.get_columns(table)
-                    col_names = [c["name"] for c in cols]
-                except Exception:
-                    col_names = []
+                rows: list = []
+                if col_names:
+                    try:
+                        query = _sample_query(engine, table, SAMPLE_LIMIT)
+                        result = conn.execute(text(query))
+                        rows = result.fetchall()
+                    except Exception:
+                        rows = []
 
-                if not col_names:
-                    md_parts.append("_No columns found._\n\n")
-                    continue
-
-                # Header and separator
-                header = "| " + " | ".join(col_names) + " |"
-                separator = "| " + " | ".join(["---"] * len(col_names)) + " |"
-                md_parts.append(header)
-                md_parts.append(separator)
-
-                # Fetch up to 3 sample rows
-                try:
-                    result = conn.execute(text(f'SELECT * FROM "{table}" LIMIT 3;'))
-                    rows = result.fetchall()
-                except Exception:
-                    rows = []
-
-                if rows:
-                    for row in rows:
-                        # Row can be a Row or tuple; convert each cell to string and escape pipes
-                        cells = []
-                        for val in row:
-                            s = "" if val is None else str(val)
-                            s = s.replace("|", "\\|")
-                            cells.append(s)
-                        md_parts.append("| " + " | ".join(cells) + " |")
-                else:
-                    # Add empty placeholder rows if no data
-                    for _ in range(3):
-                        md_parts.append("| " + " | ".join([""] * len(col_names)) + " |")
-
-                md_parts.append("\n")
+                md_parts.extend(_render_markdown_table(col_names, rows))
     except Exception:
-        # If anything goes wrong assembling markdown, return an empty schema string
         return ""
 
-    db_schema = "\n".join(md_parts)
-    return db_schema
+    return "\n".join(md_parts)
 
 
 def execute_query(connection: dict, sql_query: str):
