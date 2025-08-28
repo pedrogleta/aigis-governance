@@ -75,7 +75,7 @@ Here is the result from your latest executed query, if any
 ask_database_prompt = """
 You are a SQL writing agent that ONLY responds with raw SQL code.
 You will be provided with a database schema and a natural language query. Using the schema and the query, build SQL to respond to that query.
-DO NOT respond with anything else besides just the raw SQL code.
+DO NOT respond with anything else besides just the raw SQL code. DO NOT include comments or backticks.
 
 <db_schema>
     {db_schema}
