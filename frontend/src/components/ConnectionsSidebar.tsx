@@ -54,6 +54,7 @@ const ConnectionsSidebar: React.FC<Props> = ({
   const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
   const [importBusy, setImportBusy] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [customOpen, setCustomOpen] = useState(true);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const confirmDelete = (id: number) => {
@@ -164,6 +165,82 @@ const ConnectionsSidebar: React.FC<Props> = ({
     }
   };
 
+  // Split connections into custom and others
+  const customConnections = connections.filter((c) => c.db_type === 'custom');
+  const otherConnections = connections.filter((c) => c.db_type !== 'custom');
+
+  // Reusable row UI for a single connection
+  const renderConnectionRow = (c: UserConnection) => (
+    <div
+      key={c.id}
+      onClick={() => onSelect(c)}
+      onKeyDown={(e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') onSelect(c);
+      }}
+      tabIndex={0}
+      role="button"
+      className={cn(
+        'border border-gray-800 rounded p-3 flex items-center justify-between space-x-3 hover:border-green-600 transition-colors',
+        selectedConnection?.id === c.id && 'border-green-600 bg-gray-800',
+      )}
+      style={{ cursor: 'pointer' }}
+    >
+      <div className="flex items-center space-x-3 min-w-0">
+        <input
+          type="radio"
+          name="connection"
+          checked={selectedConnection?.id === c.id}
+          onChange={() => onSelect(c)}
+          onClick={(e) => e.stopPropagation()}
+          aria-label={`Select connection ${c.name}`}
+          className="h-4 w-4 mr-3 accent-green-500 bg-gray-800 border-gray-700 rounded focus:ring-2 focus:ring-green-500"
+        />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-white truncate">
+            {c.name}
+          </div>
+          <div className="text-xs text-gray-400 truncate">
+            {c.db_type} {c.host ? `• ${c.host}` : ''}
+          </div>
+        </div>
+      </div>
+      <div className="flex items-center space-x-2">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onTest(c.id);
+          }}
+          disabled={testingId === c.id}
+          className="text-xs px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-200 transition-colors"
+          style={{ cursor: 'pointer' }}
+        >
+          {testingId === c.id ? 'Testing...' : 'Test'}
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit(c);
+            setShowFormModal(true);
+          }}
+          className="text-xs px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-200 transition-colors"
+          style={{ cursor: 'pointer' }}
+        >
+          Edit
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            confirmDelete(c.id);
+          }}
+          className="text-xs px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-white transition-colors"
+          style={{ cursor: 'pointer' }}
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <AnimatePresence>
       {open && (
@@ -207,80 +284,44 @@ const ConnectionsSidebar: React.FC<Props> = ({
             {/* Connections list shown first */}
             <div>
               <h3 className="text-sm font-semibold text-gray-300 mb-2">
-                Your connections
+                Your databases
               </h3>
               <div className="space-y-2 mb-6">
-                {connections.map((c) => (
-                  <div
-                    key={c.id}
-                    onClick={() => onSelect(c)}
-                    onKeyDown={(e: React.KeyboardEvent) => {
-                      if (e.key === 'Enter' || e.key === ' ') onSelect(c);
-                    }}
-                    tabIndex={0}
-                    role="button"
-                    className={cn(
-                      'border border-gray-800 rounded p-3 flex items-center justify-between space-x-3 hover:border-green-600 transition-colors',
-                      selectedConnection?.id === c.id &&
-                        'border-green-600 bg-gray-800',
-                    )}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <div className="flex items-center space-x-3 min-w-0">
-                      <input
-                        type="radio"
-                        name="connection"
-                        checked={selectedConnection?.id === c.id}
-                        onChange={() => onSelect(c)}
-                        onClick={(e) => e.stopPropagation()}
-                        aria-label={`Select connection ${c.name}`}
-                        className="h-4 w-4 mr-3 accent-green-500 bg-gray-800 border-gray-700 rounded focus:ring-2 focus:ring-green-500"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-white truncate">
-                          {c.name}
-                        </div>
-                        <div className="text-xs text-gray-400 truncate">
-                          {c.db_type} {c.host ? `• ${c.host}` : ''}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onTest(c.id);
-                        }}
-                        disabled={testingId === c.id}
-                        className="text-xs px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-200 transition-colors"
-                        style={{ cursor: 'pointer' }}
-                      >
-                        {testingId === c.id ? 'Testing...' : 'Test'}
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onEdit(c);
-                          setShowFormModal(true);
-                        }}
-                        className="text-xs px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-200 transition-colors"
-                        style={{ cursor: 'pointer' }}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          confirmDelete(c.id);
-                        }}
-                        className="text-xs px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-white transition-colors"
-                        style={{ cursor: 'pointer' }}
-                      >
-                        Delete
-                      </button>
-                    </div>
+                {/* Custom connections accordion */}
+                {customConnections.length > 0 && (
+                  <div className="border border-gray-800 rounded">
+                    <button
+                      className="w-full flex items-center justify-between px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-t cursor-pointer"
+                      onClick={() => setCustomOpen((v) => !v)}
+                      aria-expanded={customOpen}
+                    >
+                      <span className="text-sm font-medium">
+                        Custom connections
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {customConnections.length} item
+                        {customConnections.length > 1 ? 's' : ''}
+                      </span>
+                    </button>
+                    <AnimatePresence initial={false}>
+                      {customOpen && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="p-2 space-y-2 border-t border-gray-800"
+                        >
+                          {customConnections.map((c) => renderConnectionRow(c))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
-                ))}
+                )}
+
+                {/* Other connections */}
+                {otherConnections.map((c) => renderConnectionRow(c))}
+
                 {connections.length === 0 && (
                   <div className="text-xs text-gray-500">
                     No connections yet.
