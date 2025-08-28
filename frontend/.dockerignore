@@ -1,0 +1,13 @@
+# Prevent sending large or unnecessary files to the Docker build context
+node_modules/
+dist/
+.next/
+.cache/
+.turbo/
+.DS_Store
+*.log
+.env
+.env.*
+coverage/
+storybook-static/
+src/**/*.map
