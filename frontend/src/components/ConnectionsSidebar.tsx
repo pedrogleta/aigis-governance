@@ -53,6 +53,7 @@ const ConnectionsSidebar: React.FC<Props> = ({
   const [csvPreview, setCsvPreview] = useState<CsvUploadPreview | null>(null);
   const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
   const [importBusy, setImportBusy] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const confirmDelete = (id: number) => {
@@ -76,6 +77,92 @@ const ConnectionsSidebar: React.FC<Props> = ({
   useEffect(() => {
     if (open || showFormModal) firstInputRef.current?.focus();
   }, [open, showFormModal]);
+
+  // --- CSV helpers ---
+  const normalize = (v: unknown) =>
+    typeof v === 'string' ? v.trim() : v == null ? '' : String(v).trim();
+
+  const isBooleanCol = (values: string[]) => {
+    if (values.length === 0) return false;
+    const boolRe = /^(true|false|0|1|yes|no)$/i;
+    return values.every((v) => v === '' || boolRe.test(v));
+  };
+
+  const isIntegerCol = (values: string[]) => {
+    if (values.length === 0) return false;
+    const intRe = /^-?\d+$/;
+    return values.every((v) => v === '' || intRe.test(v));
+  };
+
+  const isFloatCol = (values: string[]) => {
+    if (values.length === 0) return false;
+    const floatRe = /^-?\d*(?:\.\d+)?$/; // allow integers and decimals
+    const hasNum = values.some((v) => v !== '' && /\d/.test(v));
+    return (
+      hasNum && values.every((v) => v === '' || (floatRe.test(v) && v !== '-'))
+    );
+  };
+
+  const isDateOrTimestampCol = (values: string[]) => {
+    if (values.length === 0) return null as null | 'date' | 'timestamp';
+    const nonEmpty = values.filter((v) => v !== '');
+    if (nonEmpty.length === 0) return null;
+    const allParsable = nonEmpty.every((v) => !isNaN(Date.parse(v)));
+    if (!allParsable) return null;
+    // If any value includes time indication, classify as timestamp
+    const hasTime = nonEmpty.some((v) => /[T ]\d{1,2}:\d{2}/.test(v));
+    return hasTime ? 'timestamp' : 'date';
+  };
+
+  const inferColumnTypes = (
+    headers: string[],
+    sample: (string | number | null | undefined)[][],
+  ) => {
+    const result: Record<string, string> = {};
+    headers.forEach((h, idx) => {
+      const colVals = sample.map((row) => normalize(row[idx]) as string);
+      // Heuristic priority: boolean -> integer -> float -> date/timestamp -> text
+      if (isBooleanCol(colVals)) {
+        result[h] = 'boolean';
+        return;
+      }
+      if (isIntegerCol(colVals)) {
+        result[h] = 'integer';
+        return;
+      }
+      if (isFloatCol(colVals)) {
+        // If every numeric is integer but we reached here, keep integer; else float
+        const nonEmpty = colVals.filter((v) => v !== '');
+        const allInt = nonEmpty.every((v) => /^-?\d+$/.test(v));
+        result[h] = allInt ? 'integer' : 'float';
+        return;
+      }
+      const dt = isDateOrTimestampCol(colVals);
+      if (dt) {
+        result[h] = dt;
+        return;
+      }
+      result[h] = 'text';
+    });
+    return result;
+  };
+
+  const processCsvFile = async (file: File) => {
+    setImportBusy(true);
+    try {
+      const preview = await apiService.uploadCsv(file);
+      setCsvPreview(preview);
+      // initialize column types via inference based on sample
+      const inferred = inferColumnTypes(preview.headers, preview.sample);
+      setColumnTypes(inferred);
+      setImportStep('types');
+    } catch (err) {
+      console.error(err);
+      alert((err as Error).message);
+    } finally {
+      setImportBusy(false);
+    }
+  };
 
   return (
     <AnimatePresence>
@@ -465,56 +552,132 @@ const ConnectionsSidebar: React.FC<Props> = ({
                           ref={fileInputRef}
                           type="file"
                           accept=".csv,text/csv"
-                          className="w-full text-sm text-gray-200"
+                          className="hidden"
                           onChange={async (e) => {
                             const file = e.target.files?.[0];
                             if (!file) return;
-                            setImportBusy(true);
-                            try {
-                              const preview = await apiService.uploadCsv(file);
-                              setCsvPreview(preview);
-                              // init column types to text by default
-                              const init: Record<string, string> = {};
-                              for (const h of preview.headers) init[h] = 'text';
-                              setColumnTypes(init);
-                              setImportStep('types');
-                            } catch (err) {
-                              console.error(err);
-                              alert((err as Error).message);
-                            } finally {
-                              setImportBusy(false);
-                            }
+                            await processCsvFile(file);
                           }}
                         />
-                        {importBusy && (
-                          <div className="text-xs text-gray-400">
-                            Uploading…
+
+                        <div
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            setIsDragging(true);
+                          }}
+                          onDragLeave={() => setIsDragging(false)}
+                          onDrop={async (e) => {
+                            e.preventDefault();
+                            setIsDragging(false);
+                            const file = e.dataTransfer.files?.[0];
+                            if (!file) return;
+                            await processCsvFile(file);
+                          }}
+                          className={cn(
+                            'flex flex-col items-center justify-center w-full h-40 border-2 border-dashed rounded-lg transition-colors',
+                            isDragging
+                              ? 'border-green-500 bg-green-500/10'
+                              : 'border-gray-700 bg-gray-800/40',
+                          )}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => fileInputRef.current?.click()}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ')
+                              fileInputRef.current?.click();
+                          }}
+                          aria-label="Upload a CSV"
+                          style={{ cursor: 'pointer' }}
+                        >
+                          <div className="text-gray-200 font-medium">
+                            Drop CSV here
                           </div>
-                        )}
+                          <div className="text-xs text-gray-400 mt-1">
+                            or click to browse
+                          </div>
+                          {importBusy && (
+                            <div className="mt-3 text-xs text-gray-400">
+                              Uploading…
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 justify-end">
+                          <button
+                            className="px-3 py-2 rounded text-sm bg-gray-700 hover:bg-gray-600 text-white cursor-pointer"
+                            onClick={() => fileInputRef.current?.click()}
+                          >
+                            Browse files
+                          </button>
+                        </div>
                       </div>
                     )}
 
                     {importStep === 'types' && csvPreview && (
                       <div className="space-y-4">
-                        <div>
-                          <div className="text-sm text-gray-300">
-                            File:{' '}
-                            <span className="text-gray-200">
-                              {csvPreview.filename}
-                            </span>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                          <div>
+                            <div className="text-sm text-gray-300">
+                              File:{' '}
+                              <span className="text-gray-200">
+                                {csvPreview.filename}
+                              </span>
+                            </div>
+                            <div className="text-xs text-gray-400">
+                              Detected columns: {csvPreview.headers.length}
+                            </div>
                           </div>
-                          <div className="text-xs text-gray-400">
-                            Detected columns: {csvPreview.headers.length}
+                          <div className="flex items-center gap-2">
+                            <button
+                              className="px-3 py-2 rounded text-sm bg-gray-700 hover:bg-gray-600 text-white cursor-pointer"
+                              onClick={() => {
+                                if (!csvPreview) return;
+                                const inferred = inferColumnTypes(
+                                  csvPreview.headers,
+                                  csvPreview.sample,
+                                );
+                                setColumnTypes(inferred);
+                              }}
+                            >
+                              Auto-detect types
+                            </button>
+                            <div className="flex items-center gap-1">
+                              <span className="hidden sm:inline text-xs text-gray-400">
+                                Set all to
+                              </span>
+                              <select
+                                className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-100 text-sm"
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  const all: Record<string, string> = {};
+                                  for (const h of csvPreview.headers)
+                                    all[h] = v;
+                                  setColumnTypes(all);
+                                }}
+                                defaultValue=""
+                              >
+                                <option value="" disabled>
+                                  Set all…
+                                </option>
+                                <option value="text">Text</option>
+                                <option value="integer">Integer</option>
+                                <option value="float">Float</option>
+                                <option value="boolean">Boolean</option>
+                                <option value="date">Date</option>
+                                <option value="timestamp">Timestamp</option>
+                              </select>
+                            </div>
                           </div>
                         </div>
-                        <div className="overflow-auto border border-gray-800 rounded">
+
+                        <div className="overflow-auto border border-gray-800 rounded max-h-[50vh]">
                           <table className="w-full text-sm">
-                            <thead>
+                            <thead className="sticky top-0 z-10">
                               <tr className="bg-gray-800">
-                                <th className="text-left p-2 text-gray-200">
+                                <th className="text-left p-2 text-gray-200 w-1/4">
                                   Column
                                 </th>
-                                <th className="text-left p-2 text-gray-200">
+                                <th className="text-left p-2 text-gray-200 w-1/4">
                                   Type
                                 </th>
                                 <th className="text-left p-2 text-gray-200">
@@ -528,10 +691,12 @@ const ConnectionsSidebar: React.FC<Props> = ({
                                   key={h}
                                   className="border-t border-gray-800"
                                 >
-                                  <td className="p-2 text-gray-100">{h}</td>
-                                  <td className="p-2">
+                                  <td className="p-2 text-gray-100 align-top break-words">
+                                    {h}
+                                  </td>
+                                  <td className="p-2 align-top">
                                     <select
-                                      className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-100"
+                                      className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-100"
                                       value={columnTypes[h] || 'text'}
                                       onChange={(e) =>
                                         setColumnTypes({
@@ -556,6 +721,7 @@ const ConnectionsSidebar: React.FC<Props> = ({
                                         <span
                                           key={rIdx}
                                           className="px-2 py-0.5 bg-gray-800 rounded text-xs text-gray-300"
+                                          title={String(r[idx] ?? '')}
                                         >
                                           {r[idx] ?? ''}
                                         </span>
@@ -568,47 +734,48 @@ const ConnectionsSidebar: React.FC<Props> = ({
                           </table>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                          <button
-                            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm cursor-pointer disabled:opacity-50"
-                            disabled={importBusy}
-                            onClick={async () => {
-                              if (!csvPreview) return;
-                              setImportBusy(true);
-                              try {
-                                const conn = await apiService.finishImportCsv(
-                                  csvPreview.filename,
-                                  csvPreview.raw,
-                                  columnTypes,
-                                );
-                                // refresh and select the newly created custom connection
-                                await onRefresh();
-                                onSelect(conn);
-                                setShowImportModal(false);
-                                // reset state
+                        <div className="sticky bottom-0 bg-gray-900 pt-2">
+                          <div className="flex items-center gap-2 justify-end">
+                            <button
+                              className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm cursor-pointer"
+                              onClick={() => {
                                 setImportStep('upload');
                                 setCsvPreview(null);
                                 setColumnTypes({});
-                              } catch (err) {
-                                console.error(err);
-                                alert((err as Error).message);
-                              } finally {
-                                setImportBusy(false);
-                              }
-                            }}
-                          >
-                            {importBusy ? 'Importing…' : 'Finish import'}
-                          </button>
-                          <button
-                            className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm cursor-pointer"
-                            onClick={() => {
-                              setImportStep('upload');
-                              setCsvPreview(null);
-                              setColumnTypes({});
-                            }}
-                          >
-                            Back
-                          </button>
+                              }}
+                            >
+                              Back
+                            </button>
+                            <button
+                              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm cursor-pointer disabled:opacity-50"
+                              disabled={importBusy}
+                              onClick={async () => {
+                                if (!csvPreview) return;
+                                setImportBusy(true);
+                                try {
+                                  const conn = await apiService.finishImportCsv(
+                                    csvPreview.filename,
+                                    csvPreview.raw,
+                                    columnTypes,
+                                  );
+                                  await onRefresh();
+                                  onSelect(conn);
+                                  setShowImportModal(false);
+                                  // reset state
+                                  setImportStep('upload');
+                                  setCsvPreview(null);
+                                  setColumnTypes({});
+                                } catch (err) {
+                                  console.error(err);
+                                  alert((err as Error).message);
+                                } finally {
+                                  setImportBusy(false);
+                                }
+                              }}
+                            >
+                              {importBusy ? 'Importing…' : 'Finish import'}
+                            </button>
+                          </div>
                         </div>
                       </div>
                     )}
