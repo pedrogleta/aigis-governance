@@ -250,8 +250,12 @@ class DatabaseManager:
                 raise ValueError(
                     "Custom connection requires schema name in database_name"
                 )
+            # Sanitize and cap length to avoid invalid identifier
+            safe_schema = schema_name[:MAX_IDENTIFIER_LEN]
             engine = create_engine(
                 settings.postgres_url,
+                # Ensure search_path is applied at connection time via libpq options
+                connect_args={"options": f"-csearch_path={safe_schema}"},
                 pool_size=settings.database_pool_size,
                 max_overflow=settings.database_max_overflow,
                 pool_timeout=settings.database_pool_timeout,
@@ -265,7 +269,6 @@ class DatabaseManager:
                     cursor = dbapi_connection.cursor()
                     # Quote identifier safely by simple replacement (schema is sanitized at creation time)
                     # Avoid exceeding identifier length
-                    safe_schema = schema_name[:MAX_IDENTIFIER_LEN]
                     cursor.execute(f'SET search_path TO "{safe_schema}"')
                     cursor.close()
                 except Exception:
