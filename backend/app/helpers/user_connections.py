@@ -1,5 +1,5 @@
 import json
-from typing import Optional, TypedDict, Any
+from typing import Optional, TypedDict, Any, List, Mapping, Union
 
 
 from core.database import db_manager
@@ -10,12 +10,15 @@ from core.crypto import decrypt_secret
 from core.config import settings
 
 
-class ConnectionMinimalReference(TypedDict):
+class ConnectionMinimalReference(TypedDict, total=False):
     user_id: str
     connection_id: str
+    connection_ids: List[int]
 
 
-def get_db_schema(connection: ConnectionMinimalReference) -> str:
+def get_db_schema(
+    connection: Union[ConnectionMinimalReference, Mapping[str, Any]],
+) -> str:
     """Return a markdown summary of the connected database schema.
 
     Strategy
@@ -28,17 +31,28 @@ def get_db_schema(connection: ConnectionMinimalReference) -> str:
     """
 
     def _resolve_engine_from_connection(
-        conn_ref: ConnectionMinimalReference,
+        conn_ref: Mapping[str, Any],
     ) -> tuple[Optional[Any | Engine], Optional[str], Optional[str]]:
         try:
-            # Preferred minimal reference
+            # Preferred minimal reference; support either single id or list of ids
             ref_user_id = conn_ref.get("user_id")
             ref_connection_id = conn_ref.get("connection_id")
+            ref_connection_ids = conn_ref.get("connection_ids")
+            if ref_user_id is None:
+                return (None, None, None)
             with db_manager.get_postgres_session_context() as db:
+                # If multiple ids provided, pick the first to resolve engine (all custom tables share schema)
+                target_id = (
+                    int(ref_connection_id)
+                    if ref_connection_id is not None
+                    else (int(ref_connection_ids[0]) if ref_connection_ids else None)
+                )
+                if target_id is None:
+                    return (None, None, None)
                 record = user_connection_crud.get_user_connection(
                     db,
                     user_id=int(ref_user_id),
-                    connection_id=int(ref_connection_id),
+                    connection_id=int(target_id),
                 )
                 if record is None:
                     return (None, None, None)
@@ -56,7 +70,7 @@ def get_db_schema(connection: ConnectionMinimalReference) -> str:
 
                 engine = db_manager.get_user_connection_engine(
                     int(ref_user_id),
-                    int(ref_connection_id),
+                    int(target_id),
                     (record.db_type or "").lower(),
                     record.host,
                     int(record.port) if record.port is not None else None,
@@ -142,6 +156,9 @@ def get_db_schema(connection: ConnectionMinimalReference) -> str:
     if engine is None:
         return ""
 
+    print("db_type:", db_type)
+    print("table_name:", table_name)
+
     # 2) Prepare inspector and metadata
     try:
         inspector = inspect(engine)
@@ -151,10 +168,43 @@ def get_db_schema(connection: ConnectionMinimalReference) -> str:
         except Exception:
             tables = []
 
-        # If this is a 'custom' connection, only include the specific table_name stored on the connection
+        # If this is a 'custom' connection, only include specific table(s)
         if db_type == "custom":
-            if table_name is not None and table_name != "":
-                tables = [table_name]
+            wanted: List[str] = []
+            # Single selection case
+            if table_name:
+                wanted = [table_name]
+            # Multi-selection: gather table names for provided ids
+            if isinstance(connection.get("connection_ids"), list):
+                try:
+                    with db_manager.get_postgres_session_context() as db:
+                        uid_val = connection.get("user_id")
+                        if uid_val is None:
+                            raise ValueError("Missing user_id in connection reference")
+                        uid_int = int(uid_val)
+                        for cid in connection.get("connection_ids", []):
+                            rec = user_connection_crud.get_user_connection(
+                                db,
+                                user_id=uid_int,
+                                connection_id=int(cid),
+                            )
+                            if (
+                                rec
+                                and rec.db_type
+                                and rec.db_type.lower() == "custom"
+                                and rec.table_name
+                            ):
+                                wanted.append(rec.table_name)
+                except Exception:
+                    wanted = []
+            elif table_name:
+                wanted = [table_name]
+
+            if wanted:
+                wanted_lower = {w.lower() for w in wanted}
+                tables = [t for t in tables if t.lower() in wanted_lower]
+            else:
+                tables = []
 
         md_parts = [f"Database Type: {db_label}\n", "\n"]
 
@@ -184,7 +234,11 @@ def execute_query(connection: dict, sql_query: str):
     try:
         conn_ref = connection
         user_id = conn_ref.get("user_id")
+        # Support either single id or an array of custom connection ids
         connection_id = conn_ref.get("connection_id") or conn_ref.get("id")
+        if connection_id is None and isinstance(conn_ref.get("connection_ids"), list):
+            arr = conn_ref.get("connection_ids")
+            connection_id = arr[0] if arr else None
         if user_id is None or connection_id is None:
             raise ValueError("Missing connection reference in state")
 

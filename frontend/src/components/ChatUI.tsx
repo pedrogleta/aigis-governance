@@ -48,6 +48,9 @@ const ChatUI: React.FC = () => {
   const [connections, setConnections] = useState<UserConnection[]>([]);
   const [selectedConnection, setSelectedConnection] =
     useState<UserConnection | null>(apiService.getSelectedConnection());
+  const [selectedCustomIds, setSelectedCustomIds] = useState<number[]>(
+    apiService.getSelectedConnectionIds?.() || [],
+  );
   const [formState, setFormState] = useState<UserConnectionCreate>({
     name: '',
     db_type: 'postgres',
@@ -346,6 +349,13 @@ const ChatUI: React.FC = () => {
               {selectedConnection.name}
             </span>
           </span>
+        ) : selectedCustomIds.length > 0 ? (
+          <span className="connected text-green-200 font-medium">
+            Custom:{' '}
+            <span className="text-white font-semibold ml-1">
+              {selectedCustomIds.length} selected
+            </span>
+          </span>
         ) : (
           <span className="text-gray-300">Choose a connection</span>
         );
@@ -375,6 +385,13 @@ const ChatUI: React.FC = () => {
   };
 
   const handleSelectConnection = async (conn: UserConnection | null) => {
+    // Selecting a non-custom clears custom multi-selection
+    if (conn && conn.db_type !== 'custom') {
+      if (selectedCustomIds.length > 0) {
+        setSelectedCustomIds([]);
+        apiService.setSelectedConnectionIds([]);
+      }
+    }
     setSelectedConnection(conn);
     apiService.setSelectedConnection(conn);
     try {
@@ -384,6 +401,28 @@ const ChatUI: React.FC = () => {
     } catch (e) {
       console.warn('Failed to update thread connection', e);
     }
+  };
+
+  const handleToggleCustom = async (id: number) => {
+    // Toggling a custom connection should deselect any non-custom selection
+    if (selectedConnection && selectedConnection.db_type !== 'custom') {
+      setSelectedConnection(null);
+      apiService.setSelectedConnection(null);
+    }
+
+    setSelectedCustomIds((prev) => {
+      const next = prev.includes(id)
+        ? prev.filter((x) => x !== id)
+        : [...prev, id];
+      apiService.setSelectedConnectionIds(next);
+      // Push update to backend with the list (if empty, do nothing)
+      if (next.length > 0) {
+        apiService
+          .updateThreadConnections(next)
+          .catch((e) => console.warn('Failed to update multi connections', e));
+      }
+      return next;
+    });
   };
 
   const handleSaveConnection = async () => {
@@ -726,12 +765,14 @@ const ChatUI: React.FC = () => {
         onClose={() => setConnectionsOpen(false)}
         connections={connections}
         selectedConnection={selectedConnection}
+        selectedCustomIds={selectedCustomIds}
         formState={formState}
         editingId={editingId}
         testingId={testingId}
         setFormState={(s) => setFormState(s)}
         setEditingId={(id) => setEditingId(id)}
         onSelect={handleSelectConnection}
+        onToggleCustom={handleToggleCustom}
         onSave={handleSaveConnection}
         onEdit={handleEdit}
         onDelete={handleDelete}

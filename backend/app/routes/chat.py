@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from langgraph.graph.state import RunnableConfig
-from langchain_core.messages import ToolMessage, HumanMessage
+from langchain_core.messages import HumanMessage
 
 from app.helpers.langgraph import stream_langgraph_events
 from llm.agent import graph
@@ -57,8 +57,9 @@ async def send_message(
     # Persist user message
     timestamp = datetime.now(timezone.utc)
     user_text = message.get("text", "")
-    # Optional user-selected connection from frontend
+    # Optional user-selected connection(s) from frontend
     user_connection_id = message.get("user_connection_id")
+    user_connection_ids = message.get("user_connection_ids")
     thread_crud.add_message(
         db, db_thread, sender="user", text=user_text, timestamp=timestamp
     )
@@ -82,16 +83,23 @@ async def send_message(
     thread_config = cast(RunnableConfig, {"configurable": {"thread_id": thread_id}})
 
     # Pass only minimal reference. Helper will resolve details with password.
+    connection_ref = None
+    if user_connection_ids and isinstance(user_connection_ids, list):
+        connection_ref = {
+            "user_id": current_user.id,
+            "connection_ids": user_connection_ids,
+        }
+    elif user_connection_id is not None:
+        connection_ref = {
+            "user_id": current_user.id,
+            "connection_id": user_connection_id,
+        }
+
     graph_input = cast(
         AigisState,
         {
             "messages": [user_text],
-            "connection": {
-                "user_id": current_user.id,
-                "connection_id": user_connection_id,
-            }
-            if user_connection_id is not None
-            else None,
+            "connection": connection_ref,
         },
     )
 
@@ -158,20 +166,39 @@ async def update_thread_connection(
     payload: dict,
     current_user: User = Depends(get_current_user),
 ):
-    """Update the graph state for a thread with a new connection, and precompute db_schema."""
+    """Update the graph state for a thread with a new connection, supporting multiple custom connections, and precompute db_schema."""
     if thread_id not in active_threads:
         raise HTTPException(status_code=404, detail="Thread not found")
 
     user_connection_id = payload.get("user_connection_id")
-    if user_connection_id is None:
-        raise HTTPException(status_code=400, detail="user_connection_id is required")
+    user_connection_ids = payload.get("user_connection_ids")
+    if user_connection_id is None and not user_connection_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="user_connection_id or user_connection_ids is required",
+        )
 
     thread_config = cast(RunnableConfig, {"configurable": {"thread_id": thread_id}})
 
-    # Build minimal connection reference
-    connection_ref = {"user_id": current_user.id, "connection_id": user_connection_id}
+    # Build minimal connection reference (single or multiple)
+    if user_connection_ids:
+        if not isinstance(user_connection_ids, list) or len(user_connection_ids) == 0:
+            raise HTTPException(
+                status_code=400, detail="user_connection_ids must be a non-empty list"
+            )
+        # Validate all belong to user and are custom
+        # We defer deep validation here; get_db_schema will filter appropriately
+        connection_ref = {
+            "user_id": current_user.id,
+            "connection_ids": user_connection_ids,
+        }
+    else:
+        connection_ref = {
+            "user_id": current_user.id,
+            "connection_id": user_connection_id,
+        }
 
-    # Compute db_schema for the new connection and update graph state
+    # Compute db_schema for the new connection(s) and update graph state
     db_schema = get_db_schema(connection=connection_ref)
 
     try:

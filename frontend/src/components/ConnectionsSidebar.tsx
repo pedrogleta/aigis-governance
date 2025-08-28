@@ -15,12 +15,14 @@ interface Props {
   onClose: () => void;
   connections: UserConnection[];
   selectedConnection: UserConnection | null;
+  selectedCustomIds?: number[]; // multi-select custom
   formState: UserConnectionCreate;
   editingId: number | null;
   testingId: number | null;
   setFormState: (s: UserConnectionCreate) => void;
   setEditingId: (id: number | null) => void;
-  onSelect: (c: UserConnection | null) => void;
+  onSelect: (c: UserConnection | null) => void; // select non-custom (radio)
+  onToggleCustom?: (id: number) => void; // toggle custom checkbox
   onSave: () => void;
   onEdit: (c: UserConnection) => void;
   onDelete: (id: number) => void;
@@ -33,12 +35,14 @@ const ConnectionsSidebar: React.FC<Props> = ({
   onClose,
   connections,
   selectedConnection,
+  selectedCustomIds = [],
   formState,
   editingId,
   testingId,
   setFormState,
   setEditingId,
   onSelect,
+  onToggleCustom,
   onSave,
   onEdit,
   onDelete,
@@ -173,28 +177,54 @@ const ConnectionsSidebar: React.FC<Props> = ({
   const renderConnectionRow = (c: UserConnection) => (
     <div
       key={c.id}
-      onClick={() => onSelect(c)}
+      onClick={() => {
+        if (c.db_type === 'custom') {
+          onToggleCustom && onToggleCustom(c.id);
+        } else {
+          onSelect(c);
+        }
+      }}
       onKeyDown={(e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' || e.key === ' ') onSelect(c);
+        if (e.key === 'Enter' || e.key === ' ')
+          c.db_type === 'custom'
+            ? onToggleCustom && onToggleCustom(c.id)
+            : onSelect(c);
       }}
       tabIndex={0}
       role="button"
       className={cn(
         'border border-gray-800 rounded p-3 flex items-center justify-between space-x-3 hover:border-green-600 transition-colors',
-        selectedConnection?.id === c.id && 'border-green-600 bg-gray-800',
+        c.db_type === 'custom'
+          ? selectedCustomIds.includes(c.id) && 'border-green-600 bg-gray-800'
+          : selectedConnection?.id === c.id && 'border-green-600 bg-gray-800',
       )}
       style={{ cursor: 'pointer' }}
     >
       <div className="flex items-center space-x-3 min-w-0">
-        <input
-          type="radio"
-          name="connection"
-          checked={selectedConnection?.id === c.id}
-          onChange={() => onSelect(c)}
-          onClick={(e) => e.stopPropagation()}
-          aria-label={`Select connection ${c.name}`}
-          className="h-4 w-4 mr-3 accent-green-500 bg-gray-800 border-gray-700 rounded focus:ring-2 focus:ring-green-500"
-        />
+        {/* Radio for non-custom; checkbox for custom */}
+        {c.db_type === 'custom' ? (
+          <input
+            type="checkbox"
+            checked={selectedCustomIds.includes(c.id)}
+            onChange={(e) => {
+              e.stopPropagation();
+              onToggleCustom && onToggleCustom(c.id);
+            }}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={`Toggle custom connection ${c.name}`}
+            className="h-4 w-4 mr-3 accent-green-500 bg-gray-800 border-gray-700 rounded focus:ring-2 focus:ring-green-500"
+          />
+        ) : (
+          <input
+            type="radio"
+            name="connection"
+            checked={selectedConnection?.id === c.id}
+            onChange={() => onSelect(c)}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={`Select connection ${c.name}`}
+            className="h-4 w-4 mr-3 accent-green-500 bg-gray-800 border-gray-700 rounded focus:ring-2 focus:ring-green-500"
+          />
+        )}
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium text-white truncate">
             {c.name}
