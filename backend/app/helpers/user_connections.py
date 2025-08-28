@@ -1,5 +1,5 @@
 import json
-from typing import Optional
+from typing import Optional, TypedDict
 
 
 from core.database import db_manager
@@ -9,14 +9,19 @@ from core.crypto import decrypt_secret
 from core.config import settings
 
 
-def get_db_schema(connection: dict | None = None) -> str:
+class ConnectionMinimalReference(TypedDict):
+    user_id: str
+    connection_id: str
+
+
+def get_db_schema(connection: ConnectionMinimalReference | None = None) -> str:
     # Determine engine based on provided connection reference (user_id, connection_id)
     engine = None
     if connection:
         try:
             # Prefer minimal reference { user_id, connection_id }
             ref_user_id = connection.get("user_id")
-            ref_connection_id = connection.get("connection_id") or connection.get("id")
+            ref_connection_id = connection.get("connection_id")
 
             if ref_user_id is not None and ref_connection_id is not None:
                 # Fetch full connection details from main DB and decrypt password if present
