@@ -1,4 +1,7 @@
 import json
+import datetime
+import decimal
+import uuid
 from typing import Optional, TypedDict, Any, List, Mapping, Union
 
 
@@ -232,6 +235,28 @@ def get_db_schema(
 
 def execute_query(connection: dict, sql_query: str):
     try:
+
+        def _json_default(o):
+            # Handle common non-JSON-serializable DB types
+            if isinstance(o, (datetime.date, datetime.datetime, datetime.time)):
+                # Use ISO 8601 formatting for temporal values
+                return o.isoformat()
+            if isinstance(o, decimal.Decimal):
+                # Prefer float for numeric types; if NaN/Infinity, fallback to str
+                try:
+                    return float(o)
+                except Exception:
+                    return str(o)
+            if isinstance(o, (uuid.UUID, bytes, memoryview)):
+                # UUID as string; bytes/memoryview as hex string for readability
+                if isinstance(o, (bytes, memoryview)):
+                    b = bytes(o)
+                    # Limit very large payloads by returning hex; callers can decode as needed
+                    return b.hex()
+                return str(o)
+            # Fallback to string representation to avoid hard failures
+            return str(o)
+
         conn_ref = connection
         user_id = conn_ref.get("user_id")
         # Support either single id or an array of custom connection ids
@@ -279,10 +304,14 @@ def execute_query(connection: dict, sql_query: str):
                 rows = result.mappings().fetchmany(50)
                 data = [dict(row) for row in rows]
                 columns = list(rows[0].keys()) if rows else []
-                sql_execution_result = json.dumps({"columns": columns, "rows": data})
+                sql_execution_result = json.dumps(
+                    {"columns": columns, "rows": data}, default=_json_default
+                )
             else:
                 rowcount = getattr(result, "rowcount", None)
-                sql_execution_result = json.dumps({"rowcount": rowcount})
+                sql_execution_result = json.dumps(
+                    {"rowcount": rowcount}, default=_json_default
+                )
 
         return (sql_execution_result, None)
 
