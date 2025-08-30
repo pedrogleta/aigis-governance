@@ -38,5 +38,20 @@ class ThreadCRUD:
         db.refresh(thread)
         return thread
 
+    @staticmethod
+    def set_thread_model(
+        db: Session, thread: Thread, model_name: Optional[str]
+    ) -> Thread:
+        thread.selected_model = model_name
+        db.add(thread)
+        db.commit()
+        db.refresh(thread)
+        return thread
+
+    @staticmethod
+    def get_thread_model(db: Session, thread: Thread) -> Optional[str]:
+        db.refresh(thread)
+        return thread.selected_model
+
 
 thread_crud = ThreadCRUD()

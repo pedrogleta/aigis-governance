@@ -21,10 +21,10 @@ const ModelSidebar: React.FC<Props> = ({ open, onClose }) => {
     let mounted = true;
     (async () => {
       try {
-        const data = await apiService.getModels();
+        const data = await apiService.getThreadModel();
         if (!mounted) return;
         setModelsMap(data.models || {});
-        if (data.current) setCurrent(data.current);
+        setCurrent(data.model || null);
       } catch (e) {
         setError((e as Error).message);
       }
@@ -38,7 +38,7 @@ const ModelSidebar: React.FC<Props> = ({ open, onClose }) => {
     setBusy(true);
     setError(null);
     try {
-      const selected = await apiService.selectModel(name);
+      const selected = await apiService.setThreadModel(name);
       setCurrent(selected);
     } catch (e) {
       setError((e as Error).message);

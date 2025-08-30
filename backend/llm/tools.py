@@ -1,22 +1,24 @@
 from typing import Any, List, Optional, Annotated
 import json
-from sqlalchemy import text
 from app.helpers.user_connections import execute_query
-from core.database import db_manager
-from crud.connection import user_connection_crud
-from core.crypto import decrypt_secret
-from core.config import settings
 from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.prebuilt import InjectedState
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import SystemMessage, ToolMessage
 from langgraph.types import Command
 from llm.prompts import ask_analyst_prompt, json_fixer_prompt, ask_database_prompt
-from llm.model import get_current_llm
+from llm.model import get_llm_by_name
+
+
+def _resolve_thread_model(state: dict) -> Optional[BaseChatModel]:
+    name = state.get("model_name") if isinstance(state, dict) else None
+    if not name:
+        return None
+    return get_llm_by_name(name)
 
 
 def make_ask_database(model: Optional[BaseChatModel] = None):
-    """Factory that returns the ask_database tool bound to an optional model."""
+    """Factory that returns the ask_database tool. Model is resolved per-thread from state."""
 
     @tool
     def ask_database(
@@ -32,10 +34,12 @@ def make_ask_database(model: Optional[BaseChatModel] = None):
         db_schema = state["db_schema"]
         connection = state["connection"]
 
-        if not model:
-            return "Error: app configuration error. Tell the user it's an internal server error."
+        # Resolve model per-thread
+        effective_model = model or _resolve_thread_model(state)
+        if not effective_model:
+            return "Error: no model selected for this thread. Ask the user to pick a model."
 
-        sql_query_message = model.invoke(
+        sql_query_message = effective_model.invoke(
             [
                 SystemMessage(
                     content=ask_database_prompt.format(db_schema=db_schema, query=query)
@@ -73,16 +77,20 @@ def make_ask_database(model: Optional[BaseChatModel] = None):
 
 
 def make_ask_analyst(model: Optional[BaseChatModel] = None):
-    """Factory that returns the ask_analyst tool bound to an optional model."""
+    """Factory that returns the ask_analyst tool. Model is resolved per-thread from state."""
 
     @tool
-    def ask_analyst(query: str):
+    def ask_analyst(
+        query: str,
+        state: Annotated[dict, InjectedState],
+    ):
         """Asks for Data Analyst to build a plot with data you provide"""
 
-        if not model:
-            return "Error: app configuration error. Tell the user it's an internal server error."
+        effective_model = model or _resolve_thread_model(state)
+        if not effective_model:
+            return "Error: no model selected for this thread. Ask the user to pick a model."
 
-        vega_lite_spec_message = model.invoke(
+        vega_lite_spec_message = effective_model.invoke(
             [SystemMessage(content=ask_analyst_prompt.format(query_with_data=query))]
         )
 
@@ -96,7 +104,7 @@ def make_ask_analyst(model: Optional[BaseChatModel] = None):
             except Exception:
                 if attempt_num == max_retries - 1:
                     break
-                fix_response = model.invoke(
+                fix_response = effective_model.invoke(
                     [
                         SystemMessage(
                             content=json_fixer_prompt.format(json=vega_lite_spec)
@@ -114,14 +122,8 @@ def make_ask_analyst(model: Optional[BaseChatModel] = None):
 
 
 def create_tools(model: Optional[BaseChatModel] = None) -> List[Any]:
-    """Create tool instances bound to the provided or current global LLM.
-
-    If no model is provided, the globally selected model will be used. If none is
-    selected, the tools will gracefully report an internal configuration error
-    when called.
-    """
-    bound_model = model or get_current_llm()
+    """Create tool instances. Model is resolved per-thread at call time via state."""
     return [
-        make_ask_database(bound_model),
-        make_ask_analyst(bound_model),
+        make_ask_database(model),
+        make_ask_analyst(model),
     ]

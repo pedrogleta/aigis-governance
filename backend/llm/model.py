@@ -113,3 +113,22 @@ def get_current_llm() -> Optional[BaseChatModel]:
     if not _current_model_name:
         return None
     return _MODEL_REGISTRY.get(_current_model_name)
+
+
+# --- Per-thread utilities ---
+def get_llm_by_name(name: str) -> Optional[BaseChatModel]:
+    """Return an initialized LLM by canonical name. Returns None if unavailable."""
+    return _MODEL_REGISTRY.get(name)
+
+
+def is_model_available(name: str) -> bool:
+    """Check if canonical model name is currently available (env configured)."""
+    return name in _MODEL_REGISTRY
+
+
+def canonicalize_model_name(name: str) -> Optional[str]:
+    """Resolve input name or alias to canonical model name, only if available."""
+    canonical = resolve_model_name(name)
+    if canonical and canonical in _MODEL_REGISTRY:
+        return canonical
+    return None

@@ -1,4 +1,4 @@
-from typing import cast
+from typing import cast, Optional, List, Any
 
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, SystemMessage
@@ -7,7 +7,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from core.types import AigisState
-from llm.model import get_current_llm
+from llm.model import get_current_llm, get_llm_by_name
 from llm.prompts import aigis_prompt
 from llm.tools import create_tools
 
@@ -15,17 +15,30 @@ from llm.tools import create_tools
 load_dotenv(override=True)
 
 
-def _build_assistant_node(model_with_tools):
+def _build_assistant_node(model_with_tools, tools: List[Any]):
     def assistant(state: AigisState):
         db_schema = state.get("db_schema", "No connection selected by the user.")
         sql_result = state.get("sql_result", "")
+        model_name: Optional[str] = (
+            state.get("model_name") if isinstance(state, dict) else None
+        )
 
         sys_message = SystemMessage(
             content=aigis_prompt.format(db_schema=db_schema, sql_result=sql_result)
         )
 
+        # Resolve actual model per-thread; bind tools if needed
+        effective_model = get_llm_by_name(model_name) if model_name else None
+        bound = (
+            effective_model.bind_tools(tools) if effective_model else model_with_tools
+        )
+        if bound is None:
+            raise RuntimeError(
+                "No model selected. Use the /chat/{thread_id}/model endpoint to set a model for this thread."
+            )
+
         assistant_response = cast(
-            AIMessage, model_with_tools.invoke([sys_message] + state["messages"])
+            AIMessage, bound.invoke([sys_message] + state["messages"])
         )
 
         return {"messages": [assistant_response]}
@@ -52,17 +65,8 @@ def rebuild_graph() -> None:
     _bound_model = model_with_tools
 
     builder = StateGraph(AigisState)
-    # Assistant node requires a model_with_tools. Provide a guard that emits a helpful error.
-    if model_with_tools is None:
-
-        def assistant_error(state: AigisState):
-            raise RuntimeError(
-                "No model selected. Use the /models/select endpoint to set a model before chatting."
-            )
-
-        builder.add_node("assistant", assistant_error)
-    else:
-        builder.add_node("assistant", _build_assistant_node(model_with_tools))
+    # Assistant node capable of per-thread model resolution even if no global model is set
+    builder.add_node("assistant", _build_assistant_node(model_with_tools, tools))
 
     builder.add_node("tools", ToolNode(tools))
 

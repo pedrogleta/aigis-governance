@@ -19,6 +19,7 @@ from auth.dependencies import get_current_user
 from crud.user import user_crud
 from models.user import User
 from crud.thread import thread_crud
+from llm.model import canonicalize_model_name, get_available_models
 
 
 router = APIRouter(prefix="/chat")
@@ -134,9 +135,13 @@ async def send_message(
             "connection_id": user_connection_id,
         }
 
+    # Resolve thread's selected model
+    selected_model = thread_crud.get_thread_model(db, db_thread)
+
     graph_input = cast(
         AigisState,
         {
+            "model_name": selected_model,
             "messages": [user_text],
             "connection": connection_ref,
         },
@@ -188,11 +193,16 @@ async def get_thread_state(thread_id: str):
         state = graph_runner.get_state(thread_config)
         db_schema = state.values.get("db_schema", "")
         connection = state.values.get("connection")
+        model_name = state.values.get("model_name")
 
         return {
             "thread_id": thread_id,
             "thread_info": active_threads[thread_id],
-            "graph_state": {"db_schema": db_schema, "connection": connection},
+            "graph_state": {
+                "db_schema": db_schema,
+                "connection": connection,
+                "model_name": model_name,
+            },
             "status": "active",
         }
 
@@ -267,3 +277,47 @@ async def update_thread_connection(
         raise HTTPException(status_code=500, detail="Model/graph not initialized")
     current_state = graph_runner.get_state(thread_config)
     return {"graph_state": current_state}
+
+
+@router.get("/{thread_id}/model")
+async def get_thread_model(thread_id: str, db: Session = Depends(get_postgres_db)):
+    db_thread = thread_crud.get_thread_by_thread_id(db, thread_id)
+    if not db_thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return {
+        "thread_id": thread_id,
+        "model": thread_crud.get_thread_model(db, db_thread),
+        "models": get_available_models(),
+    }
+
+
+@router.post("/{thread_id}/model")
+async def set_thread_model(
+    thread_id: str,
+    payload: dict,
+    db: Session = Depends(get_postgres_db),
+):
+    db_thread = thread_crud.get_thread_by_thread_id(db, thread_id)
+    if not db_thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    name = payload.get("name")
+    if not name:
+        raise HTTPException(status_code=400, detail="Missing 'name' in body")
+    canonical = canonicalize_model_name(name)
+    if not canonical:
+        raise HTTPException(
+            status_code=400, detail=f"Unknown or unavailable model '{name}'"
+        )
+
+    # Persist on thread
+    thread_crud.set_thread_model(db, db_thread, canonical)
+
+    # Also update graph state so it's effective for ongoing runs
+    thread_config = cast(RunnableConfig, {"configurable": {"thread_id": thread_id}})
+    graph_runner = get_graph()
+    if graph_runner is None:
+        raise HTTPException(status_code=500, detail="Model/graph not initialized")
+    graph_runner.update_state(thread_config, {"model_name": canonical})
+
+    return {"ok": True, "model": canonical}

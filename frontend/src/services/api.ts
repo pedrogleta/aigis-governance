@@ -503,23 +503,28 @@ export class ApiService {
   // ---------------
   // Models selection API
   // ---------------
-  async getModels(): Promise<{
+  async getThreadModel(): Promise<{
+    model: string | null;
     models: Record<string, { description: string; available: boolean }>;
-    current: string | null;
   }> {
-    const resp = await fetch(`${this.baseUrl}/models`, {
+    const threadId = await this.ensureThread();
+    const resp = await fetch(`${this.baseUrl}/chat/${threadId}/model`, {
       method: 'GET',
       headers: this.getAuthHeaders(),
     });
-    if (!resp.ok) throw new Error(`Failed to list models: ${resp.status}`);
-    return (await resp.json()) as {
+    if (!resp.ok) throw new Error(`Failed to get model: ${resp.status}`);
+    const data = (await resp.json()) as {
+      thread_id: string;
+      model: string | null;
       models: Record<string, { description: string; available: boolean }>;
-      current: string | null;
     };
+    (this as any)._selectedModelName = data.model || null;
+    return { model: data.model, models: data.models };
   }
 
-  async selectModel(name: string): Promise<string> {
-    const resp = await fetch(`${this.baseUrl}/models/select`, {
+  async setThreadModel(name: string): Promise<string> {
+    const threadId = await this.ensureThread();
+    const resp = await fetch(`${this.baseUrl}/chat/${threadId}/model`, {
       method: 'POST',
       headers: this.getAuthHeaders('application/json'),
       body: JSON.stringify({ name }),
@@ -528,8 +533,8 @@ export class ApiService {
       const text = await resp.text();
       throw new Error(text || `Failed to select model: ${resp.status}`);
     }
-    const data = (await resp.json()) as { current?: string };
-    const current = data.current || name;
+    const data = (await resp.json()) as { model?: string };
+    const current = data.model || name;
     (this as any)._selectedModelName = current;
     return current;
   }

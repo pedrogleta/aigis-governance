@@ -104,7 +104,13 @@ const ChatUI: React.FC = () => {
 
   useEffect(() => {
     checkConnection();
-    createThread();
+    createThread().then(async () => {
+      try {
+        await apiService.getThreadModel();
+      } catch (e) {
+        // ignore; model selection is optional until user picks
+      }
+    });
     if (apiService.getToken()) refreshConnections();
   }, []);
 
