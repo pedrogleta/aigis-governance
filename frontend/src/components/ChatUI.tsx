@@ -12,6 +12,7 @@ import {
   StreamingTextComponent,
 } from './MessageComponents';
 import ConnectionsSidebar from './ConnectionsSidebar';
+import ModelSidebar from './ModelSidebar';
 
 interface Message {
   id: string;
@@ -45,9 +46,13 @@ const ChatUI: React.FC = () => {
     'connected' | 'disconnected' | 'checking'
   >('checking');
   const [connectionsOpen, setConnectionsOpen] = useState(false);
+  const [modelsOpen, setModelsOpen] = useState(false);
   const [connections, setConnections] = useState<UserConnection[]>([]);
   const [selectedConnection, setSelectedConnection] =
     useState<UserConnection | null>(apiService.getSelectedConnection());
+  const [selectedCustomIds, setSelectedCustomIds] = useState<number[]>(
+    apiService.getSelectedConnectionIds?.() || [],
+  );
   const [formState, setFormState] = useState<UserConnectionCreate>({
     name: '',
     db_type: 'postgres',
@@ -99,7 +104,13 @@ const ChatUI: React.FC = () => {
 
   useEffect(() => {
     checkConnection();
-    createThread();
+    createThread().then(async () => {
+      try {
+        await apiService.getThreadModel();
+      } catch (e) {
+        // ignore; model selection is optional until user picks
+      }
+    });
     if (apiService.getToken()) refreshConnections();
   }, []);
 
@@ -346,6 +357,13 @@ const ChatUI: React.FC = () => {
               {selectedConnection.name}
             </span>
           </span>
+        ) : selectedCustomIds.length > 0 ? (
+          <span className="connected text-green-200 font-medium">
+            Custom:{' '}
+            <span className="text-white font-semibold ml-1">
+              {selectedCustomIds.length} selected
+            </span>
+          </span>
         ) : (
           <span className="text-gray-300">Choose a connection</span>
         );
@@ -375,6 +393,13 @@ const ChatUI: React.FC = () => {
   };
 
   const handleSelectConnection = async (conn: UserConnection | null) => {
+    // Selecting a non-custom clears custom multi-selection
+    if (conn && conn.db_type !== 'custom') {
+      if (selectedCustomIds.length > 0) {
+        setSelectedCustomIds([]);
+        apiService.setSelectedConnectionIds([]);
+      }
+    }
     setSelectedConnection(conn);
     apiService.setSelectedConnection(conn);
     try {
@@ -384,6 +409,28 @@ const ChatUI: React.FC = () => {
     } catch (e) {
       console.warn('Failed to update thread connection', e);
     }
+  };
+
+  const handleToggleCustom = async (id: number) => {
+    // Toggling a custom connection should deselect any non-custom selection
+    if (selectedConnection && selectedConnection.db_type !== 'custom') {
+      setSelectedConnection(null);
+      apiService.setSelectedConnection(null);
+    }
+
+    setSelectedCustomIds((prev) => {
+      const next = prev.includes(id)
+        ? prev.filter((x) => x !== id)
+        : [...prev, id];
+      apiService.setSelectedConnectionIds(next);
+      // Push update to backend with the list (if empty, do nothing)
+      if (next.length > 0) {
+        apiService
+          .updateThreadConnections(next)
+          .catch((e) => console.warn('Failed to update multi connections', e));
+      }
+      return next;
+    });
   };
 
   const handleSaveConnection = async () => {
@@ -445,6 +492,30 @@ const ChatUI: React.FC = () => {
             <p className="text-sm text-gray-400">AI Data Science Assistant</p>
           </div>
           <div className="ml-auto flex items-center space-x-2 text-sm text-gray-400">
+            {/* Model selector button (left of connections button) */}
+            <div className="flex items-center">
+              <button
+                onClick={() => setModelsOpen(true)}
+                aria-expanded={modelsOpen}
+                aria-controls="models-sidebar"
+                className={cn(
+                  'text-sm px-4 py-2 rounded transition-colors flex items-center focus:outline-none cursor-pointer mr-2',
+                  apiService.getSelectedModelName()
+                    ? 'bg-gray-800 text-white hover:bg-gray-700 focus:ring-2 focus:ring-green-500'
+                    : 'bg-red-900/60 text-red-200 hover:bg-red-900/70 focus:ring-2 focus:ring-red-500 border border-red-800',
+                )}
+                title={
+                  apiService.getSelectedModelName()
+                    ? 'Select LLM model'
+                    : 'No model selected — click to choose one'
+                }
+                role="button"
+              >
+                <span className="truncate">
+                  {apiService.getSelectedModelName() || 'No model selected'}
+                </span>
+              </button>
+            </div>
             <div className="flex items-center space-x-2">
               <div
                 className={cn(
@@ -726,18 +797,22 @@ const ChatUI: React.FC = () => {
         onClose={() => setConnectionsOpen(false)}
         connections={connections}
         selectedConnection={selectedConnection}
+        selectedCustomIds={selectedCustomIds}
         formState={formState}
         editingId={editingId}
         testingId={testingId}
         setFormState={(s) => setFormState(s)}
         setEditingId={(id) => setEditingId(id)}
         onSelect={handleSelectConnection}
+        onToggleCustom={handleToggleCustom}
         onSave={handleSaveConnection}
         onEdit={handleEdit}
         onDelete={handleDelete}
         onTest={handleTest}
         onRefresh={refreshConnections}
       />
+      {/* Models sidebar */}
+      <ModelSidebar open={modelsOpen} onClose={() => setModelsOpen(false)} />
     </div>
   );
 };

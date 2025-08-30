@@ -1,23 +1,22 @@
 import json
-import os
 from typing import Literal, Tuple, cast, Dict, Any, Optional
 from langchain_core.messages import AIMessageChunk, ToolMessage
 from langgraph.graph.state import RunnableConfig
 from pydantic import BaseModel
 
-from llm.agent import graph
+from llm.agent import get_graph
 from core.types import AigisState
 from sqlalchemy.orm import Session
 from crud.thread import thread_crud
 from datetime import datetime, timezone
 from dotenv import load_dotenv
-from opik.integrations.langchain import OpikTracer
+# from opik.integrations.langchain import OpikTracer
 
 load_dotenv()
 
 tracer = None
 # if os.getenv("ENABLE_OPIK_TRACER") != 0:
-#     tracer = OpikTracer(graph=graph.get_graph(xray=True))
+#     tracer = OpikTracer(graph=get_graph().get_graph(xray=True))
 # else:
 #     tracer = None
 
@@ -43,7 +42,19 @@ async def stream_langgraph_events(
     if tracer is not None:
         thread["callbacks"] = [tracer]
 
-    async for event in graph.astream(graph_input, thread, stream_mode="messages"):
+    graph_runner = get_graph()
+    if graph_runner is None:
+        # Surface a clear error to client if model/graph not initialized
+        error_msg = {
+            "error": "No model selected. Use /models/select first.",
+            "type": "error",
+        }
+        yield f"data: {json.dumps(error_msg)}\n\n"
+        return
+
+    async for event in graph_runner.astream(
+        graph_input, thread, stream_mode="messages"
+    ):
         event_tuple = cast(Tuple, event)
         chunk = event_tuple[0]
 

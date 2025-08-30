@@ -74,7 +74,8 @@ export class ApiService {
   private threadId: string = '';
   private token: string | null = null;
   private currentUser: User | null = null;
-  private selectedConnection: UserConnection | null = null;
+  private selectedConnection: UserConnection | null = null; // legacy single selection
+  private selectedConnectionIds: number[] = []; // new multi-selection (custom only)
 
   constructor(baseUrl: string = 'http://localhost:8000') {
     this.baseUrl = baseUrl;
@@ -84,8 +85,7 @@ export class ApiService {
       if (stored) this.token = stored;
       const userJson = localStorage.getItem('aigis_user');
       if (userJson) this.currentUser = JSON.parse(userJson);
-      const connJson = localStorage.getItem('aigis_selected_connection');
-      if (connJson) this.selectedConnection = JSON.parse(connJson);
+      // Do not restore selected connection or model from localStorage
     } catch (e) {
       console.warn('Failed to load auth from localStorage', e);
     }
@@ -118,7 +118,7 @@ export class ApiService {
     try {
       localStorage.removeItem('aigis_token');
       localStorage.removeItem('aigis_user');
-      localStorage.removeItem('aigis_selected_connection');
+      // We do not persist connection/model selection anymore
     } catch (e) {
       console.warn('Failed to clear auth from localStorage', e);
     }
@@ -145,11 +145,16 @@ export class ApiService {
   }
 
   async updateThreadConnection(userConnectionId: number): Promise<void> {
+    // Backward-compatible single-update; forwards to multi
+    return this.updateThreadConnections([userConnectionId]);
+  }
+
+  async updateThreadConnections(userConnectionIds: number[]): Promise<void> {
     const threadId = await this.ensureThread();
     const resp = await fetch(`${this.baseUrl}/chat/${threadId}/connection`, {
       method: 'POST',
       headers: this.getAuthHeaders('application/json'),
-      body: JSON.stringify({ user_connection_id: userConnectionId }),
+      body: JSON.stringify({ user_connection_ids: userConnectionIds }),
     });
     if (!resp.ok) {
       const text = await resp.text();
@@ -166,10 +171,12 @@ export class ApiService {
   ): Promise<void> {
     try {
       const threadId = await this.ensureThread();
-      const payload = {
-        text: message,
-        user_connection_id: this.selectedConnection?.id,
-      };
+      const payload: Record<string, unknown> = { text: message };
+      if (this.selectedConnectionIds.length > 0) {
+        payload['user_connection_ids'] = this.selectedConnectionIds;
+      } else if (this.selectedConnection?.id != null) {
+        payload['user_connection_id'] = this.selectedConnection.id;
+      }
 
       // Add timeout to the fetch request
       const controller = new AbortController();
@@ -439,13 +446,15 @@ export class ApiService {
 
   setSelectedConnection(conn: UserConnection | null) {
     this.selectedConnection = conn;
-    try {
-      if (conn)
-        localStorage.setItem('aigis_selected_connection', JSON.stringify(conn));
-      else localStorage.removeItem('aigis_selected_connection');
-    } catch (e) {
-      console.warn('Failed to persist selected connection', e);
-    }
+    // no persistence
+  }
+
+  // Multi-selection helpers (custom connections only)
+  setSelectedConnectionIds(ids: number[]) {
+    this.selectedConnectionIds = ids;
+  }
+  getSelectedConnectionIds(): number[] {
+    return this.selectedConnectionIds;
   }
 
   // ---------------
@@ -490,6 +499,53 @@ export class ApiService {
     }
     return (await resp.json()) as UserConnection;
   }
+
+  // ---------------
+  // Models selection API
+  // ---------------
+  async getThreadModel(): Promise<{
+    model: string | null;
+    models: Record<string, { description: string; available: boolean }>;
+  }> {
+    const threadId = await this.ensureThread();
+    const resp = await fetch(`${this.baseUrl}/chat/${threadId}/model`, {
+      method: 'GET',
+      headers: this.getAuthHeaders(),
+    });
+    if (!resp.ok) throw new Error(`Failed to get model: ${resp.status}`);
+    const data = (await resp.json()) as {
+      thread_id: string;
+      model: string | null;
+      models: Record<string, { description: string; available: boolean }>;
+    };
+    (this as any)._selectedModelName = data.model || null;
+    return { model: data.model, models: data.models };
+  }
+
+  async setThreadModel(name: string): Promise<string> {
+    const threadId = await this.ensureThread();
+    const resp = await fetch(`${this.baseUrl}/chat/${threadId}/model`, {
+      method: 'POST',
+      headers: this.getAuthHeaders('application/json'),
+      body: JSON.stringify({ name }),
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(text || `Failed to select model: ${resp.status}`);
+    }
+    const data = (await resp.json()) as { model?: string };
+    const current = data.model || name;
+    (this as any)._selectedModelName = current;
+    return current;
+  }
+
+  getSelectedModelName(): string | null {
+    return (this as any)._selectedModelName || null;
+  }
+  setSelectedModelName(name: string | null) {
+    (this as any)._selectedModelName = name || undefined;
+    // no persistence
+  }
 }
 
 export const apiService = new ApiService();
@@ -512,6 +568,7 @@ export interface UserConnection {
   port?: number | null;
   username?: string | null;
   database_name?: string | null;
+  table_name?: string | null;
   created_at: string;
   updated_at: string;
 }

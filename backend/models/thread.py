@@ -21,6 +21,9 @@ class Thread(Base):
         DateTime(timezone=True), nullable=False
     )
 
+    # Optional per-thread selected model (canonical model name)
+    selected_model: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
     # Relationship to messages
     messages = relationship(
         "Message", back_populates="thread", cascade="all, delete-orphan"

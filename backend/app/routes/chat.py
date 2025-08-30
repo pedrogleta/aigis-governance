@@ -2,21 +2,24 @@ from typing import cast
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from langgraph.graph.state import RunnableConfig
-from langchain_core.messages import ToolMessage, HumanMessage
+from langchain_core.messages import HumanMessage
 
 from app.helpers.langgraph import stream_langgraph_events
-from llm.agent import graph
+from llm.agent import get_graph
 from app.helpers.user_connections import get_db_schema
 from core.types import AigisState
 from app.state import active_threads
 from core.database import get_postgres_db
+from auth.utils import verify_token
 from auth.dependencies import get_current_user
+from crud.user import user_crud
 from models.user import User
 from crud.thread import thread_crud
+from llm.model import canonicalize_model_name, get_available_models
 
 
 router = APIRouter(prefix="/chat")
@@ -46,8 +49,8 @@ async def create_thread(db: Session = Depends(get_postgres_db)):
 async def send_message(
     thread_id: str,
     message: dict,
+    request: Request,
     db: Session = Depends(get_postgres_db),
-    current_user: User = Depends(get_current_user),
 ):
     """Send a message to the AI agent, persist user message, and stream the agent response"""
     db_thread = thread_crud.get_thread_by_thread_id(db, thread_id)
@@ -57,8 +60,9 @@ async def send_message(
     # Persist user message
     timestamp = datetime.now(timezone.utc)
     user_text = message.get("text", "")
-    # Optional user-selected connection from frontend
+    # Optional user-selected connection(s) from frontend
     user_connection_id = message.get("user_connection_id")
+    user_connection_ids = message.get("user_connection_ids")
     thread_crud.add_message(
         db, db_thread, sender="user", text=user_text, timestamp=timestamp
     )
@@ -78,20 +82,68 @@ async def send_message(
         }
     )
 
+    # Authenticate user (after confirming thread exists to allow 404 first)
+    auth_header = request.headers.get("authorization") or request.headers.get(
+        "Authorization"
+    )
+    if not auth_header or not auth_header.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    token = auth_header.split(" ", 1)[1].strip()
+    payload = verify_token(token)
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    try:
+        sub = payload.get("sub")
+        if sub is None:
+            raise ValueError("missing sub")
+        user_id = int(sub)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    current_user = user_crud.get_user_by_id(db, user_id=user_id)
+    if current_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     # Prepare the input for the agent
     thread_config = cast(RunnableConfig, {"configurable": {"thread_id": thread_id}})
 
     # Pass only minimal reference. Helper will resolve details with password.
+    connection_ref = None
+    if user_connection_ids and isinstance(user_connection_ids, list):
+        connection_ref = {
+            "user_id": current_user.id,
+            "connection_ids": user_connection_ids,
+        }
+    elif user_connection_id is not None:
+        connection_ref = {
+            "user_id": current_user.id,
+            "connection_id": user_connection_id,
+        }
+
+    # Resolve thread's selected model
+    selected_model = thread_crud.get_thread_model(db, db_thread)
+
     graph_input = cast(
         AigisState,
         {
+            "model_name": selected_model,
             "messages": [user_text],
-            "connection": {
-                "user_id": current_user.id,
-                "connection_id": user_connection_id,
-            }
-            if user_connection_id is not None
-            else None,
+            "connection": connection_ref,
         },
     )
 
@@ -135,14 +187,22 @@ async def get_thread_state(thread_id: str):
         # Get the current state from the graph's checkpointer
         thread_config = cast(RunnableConfig, {"configurable": {"thread_id": thread_id}})
 
-        state = graph.get_state(thread_config)
+        graph_runner = get_graph()
+        if graph_runner is None:
+            raise HTTPException(status_code=500, detail="Model/graph not initialized")
+        state = graph_runner.get_state(thread_config)
         db_schema = state.values.get("db_schema", "")
         connection = state.values.get("connection")
+        model_name = state.values.get("model_name")
 
         return {
             "thread_id": thread_id,
             "thread_info": active_threads[thread_id],
-            "graph_state": {"db_schema": db_schema, "connection": connection},
+            "graph_state": {
+                "db_schema": db_schema,
+                "connection": connection,
+                "model_name": model_name,
+            },
             "status": "active",
         }
 
@@ -158,25 +218,47 @@ async def update_thread_connection(
     payload: dict,
     current_user: User = Depends(get_current_user),
 ):
-    """Update the graph state for a thread with a new connection, and precompute db_schema."""
+    """Update the graph state for a thread with a new connection, supporting multiple custom connections, and precompute db_schema."""
     if thread_id not in active_threads:
         raise HTTPException(status_code=404, detail="Thread not found")
 
     user_connection_id = payload.get("user_connection_id")
-    if user_connection_id is None:
-        raise HTTPException(status_code=400, detail="user_connection_id is required")
+    user_connection_ids = payload.get("user_connection_ids")
+    if user_connection_id is None and not user_connection_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="user_connection_id or user_connection_ids is required",
+        )
 
     thread_config = cast(RunnableConfig, {"configurable": {"thread_id": thread_id}})
 
-    # Build minimal connection reference
-    connection_ref = {"user_id": current_user.id, "connection_id": user_connection_id}
+    # Build minimal connection reference (single or multiple)
+    if user_connection_ids:
+        if not isinstance(user_connection_ids, list) or len(user_connection_ids) == 0:
+            raise HTTPException(
+                status_code=400, detail="user_connection_ids must be a non-empty list"
+            )
+        # Validate all belong to user and are custom
+        # We defer deep validation here; get_db_schema will filter appropriately
+        connection_ref = {
+            "user_id": current_user.id,
+            "connection_ids": user_connection_ids,
+        }
+    else:
+        connection_ref = {
+            "user_id": current_user.id,
+            "connection_id": user_connection_id,
+        }
 
-    # Compute db_schema for the new connection and update graph state
+    # Compute db_schema for the new connection(s) and update graph state
     db_schema = get_db_schema(connection=connection_ref)
 
     try:
         # Update the checkpointer state with both connection and db_schema
-        graph.update_state(
+        graph_runner = get_graph()
+        if graph_runner is None:
+            raise HTTPException(status_code=500, detail="Model/graph not initialized")
+        graph_runner.update_state(
             thread_config,
             {
                 "connection": connection_ref,
@@ -190,5 +272,52 @@ async def update_thread_connection(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update state: {str(e)}")
-    current_state = graph.get_state(thread_config)
+    graph_runner = get_graph()
+    if graph_runner is None:
+        raise HTTPException(status_code=500, detail="Model/graph not initialized")
+    current_state = graph_runner.get_state(thread_config)
     return {"graph_state": current_state}
+
+
+@router.get("/{thread_id}/model")
+async def get_thread_model(thread_id: str, db: Session = Depends(get_postgres_db)):
+    db_thread = thread_crud.get_thread_by_thread_id(db, thread_id)
+    if not db_thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return {
+        "thread_id": thread_id,
+        "model": thread_crud.get_thread_model(db, db_thread),
+        "models": get_available_models(),
+    }
+
+
+@router.post("/{thread_id}/model")
+async def set_thread_model(
+    thread_id: str,
+    payload: dict,
+    db: Session = Depends(get_postgres_db),
+):
+    db_thread = thread_crud.get_thread_by_thread_id(db, thread_id)
+    if not db_thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    name = payload.get("name")
+    if not name:
+        raise HTTPException(status_code=400, detail="Missing 'name' in body")
+    canonical = canonicalize_model_name(name)
+    if not canonical:
+        raise HTTPException(
+            status_code=400, detail=f"Unknown or unavailable model '{name}'"
+        )
+
+    # Persist on thread
+    thread_crud.set_thread_model(db, db_thread, canonical)
+
+    # Also update graph state so it's effective for ongoing runs
+    thread_config = cast(RunnableConfig, {"configurable": {"thread_id": thread_id}})
+    graph_runner = get_graph()
+    if graph_runner is None:
+        raise HTTPException(status_code=500, detail="Model/graph not initialized")
+    graph_runner.update_state(thread_config, {"model_name": canonical})
+
+    return {"ok": True, "model": canonical}
