@@ -1,6 +1,6 @@
 # Aigis Governance Frontend
 
-A modern React + Vite interface for the AI Agent system that allows users to chat with AI agents for BigQuery data analysis and visualization.
+A modern React + Vite interface for the AI Agent system that allows users to chat with AI agents for data analysis and visualization.
 
 ## Features
 
@@ -58,7 +58,6 @@ The frontend expects the following API endpoints from your backend:
 
 - `POST /api/chat` - Send chat messages and receive responses
 - `GET /health` - Health check endpoint
-- `GET /api/health/bigquery` - BigQuery connection status
 
 ## Project Structure
 

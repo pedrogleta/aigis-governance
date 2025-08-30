@@ -36,7 +36,7 @@ const ChatUI: React.FC = () => {
       id: '1',
       type: 'agent',
       content:
-        "Hello! I'm your AI Data Science Assistant. I can help you analyze BigQuery datasets and create visualizations. What would you like to know about your data?",
+        "Hello! I'm your AI Data Science Assistant. I can help you analyze datasets and create visualizations. What would you like to know about your data?",
       timestamp: new Date(),
     },
   ]);
