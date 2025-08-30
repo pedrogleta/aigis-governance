@@ -85,6 +85,8 @@ Environment used by Compose (defaults shown in `docker-compose.yml`):
 - `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
 - `LM_STUDIO_ENDPOINT` (default `http://0.0.0.0:1234`)
  - `DEEPSEEK_API_KEY` (optional; enables DeepSeek provider)
+ - `GOOGLE_API_KEY` (optional; enables Gemini models)
+ - `OPENAI_API_KEY` (optional; enables OpenAI models)
 - `ENABLE_OPIK_TRACER` (0/1)
 - For secure password storage in connections, set in backend container env or `.env` in `backend/`: `MASTER_ENCRYPTION_KEY` and `SECRET_KEY`
 
@@ -105,7 +107,9 @@ uv venv && uv sync
 #   POSTGRES_DB=aigis_governance
 # optional model providers:
 #   LM_STUDIO_ENDPOINT=http://0.0.0.0:1234/v1
-#   DEEPSEEK_API_KEY=your-key
+#   DEEPSEEK_API_KEY=your-deepseek-key
+#   GOOGLE_API_KEY=your-google-key
+#   OPENAI_API_KEY=your-openai-key
 uv run alembic upgrade head
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
@@ -147,13 +151,15 @@ Health
 Supported models are initialized in `backend/llm/model.py` using LangChain’s `init_chat_model`:
 - OSS via LM Studio: `openai/gpt-oss-20b`, `qwen/qwen3-8b` (enable by setting `LM_STUDIO_ENDPOINT`)
 - DeepSeek: `deepseek-chat` (enable by setting `DEEPSEEK_API_KEY`)
+- Google: `gemini-2.5-pro` (enable by setting `GOOGLE_API_KEY`)
+- OpenAI: `gpt-5` (enable by setting `OPENAI_API_KEY`)
 
 Selection is per‑thread: each chat thread can choose its own model via the UI (Model button near the header) or APIs listed above. Availability is derived from environment variables and returned in the `GET /chat/{thread_id}/model` response.
 
 Notes:
 - A thread starts with no model selected; the UI shows a red “No model selected” indicator until you pick one.
 - Tools and the assistant resolve the model per‑thread at runtime. If no model is set, the assistant will return an error prompting you to select one.
-- Aliases are accepted for convenience: `qwen` → `qwen3-8b`, `gpt_oss`/`gpt-oss` → `gpt-oss-20b`, `deepseek` → `deepseek-chat`.
+- Aliases are accepted for convenience: `qwen` → `qwen3-8b`, `gpt_oss`/`gpt-oss` → `gpt-oss-20b`, `deepseek` → `deepseek-chat`, `gemini`/`gemini-pro` → `gemini-2.5-pro`, `gpt5` → `gpt-5`.
 
 ## Agent and tools
 

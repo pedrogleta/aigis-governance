@@ -24,8 +24,9 @@ def list_models():
 def select_model(payload: dict):
     """Select the active model for the assistant and tools.
 
-    Body: {"name": "qwen3-8b" | "gpt-oss-20b" | "deepseek-chat"}
-    Aliases like "qwen", "gpt_oss", "deepseek" are accepted.
+    Body: {"name": "qwen3-8b" | "gpt-oss-20b" | "deepseek-chat" | "gemini-2.5-pro" | "gpt-5"}
+    Aliases accepted: "qwen" → "qwen3-8b", "gpt_oss"/"gpt-oss" → "gpt-oss-20b",
+    "deepseek" → "deepseek-chat", "gemini"/"gemini-pro" → "gemini-2.5-pro", "gpt5" → "gpt-5".
     """
     name = payload.get("name")
     if not name:

@@ -10,10 +10,14 @@ load_dotenv(override=True)
 # Initialize available model clients (not bound to tools here) only when env allows
 _lm_studio_endpoint = os.getenv("LM_STUDIO_ENDPOINT")
 _deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
+_google_api_key = os.getenv("GOOGLE_API_KEY")
+_openai_api_key = os.getenv("OPENAI_API_KEY")
 
 qwen_llm: Optional[BaseChatModel] = None
 gpt_oss_llm: Optional[BaseChatModel] = None
 deepseek_llm: Optional[BaseChatModel] = None
+gemini_pro_llm: Optional[BaseChatModel] = None
+gpt5_llm: Optional[BaseChatModel] = None
 
 if _lm_studio_endpoint:
     qwen_llm = init_chat_model(
@@ -42,6 +46,16 @@ if _deepseek_api_key:
         temperature=0,
     )
 
+if _google_api_key:
+    gemini_pro_llm = init_chat_model(
+        "gemini-2.5-pro", model_provider="google", stream_usage=True, temperature=0
+    )
+
+if _openai_api_key:
+    gpt5_llm = init_chat_model(
+        "gpt-5", model_provider="openai", stream_usage=True, temperature=0
+    )
+
 # Canonical registry of available models
 _MODEL_REGISTRY: Dict[str, BaseChatModel] = {}
 if qwen_llm is not None:
@@ -50,6 +64,10 @@ if gpt_oss_llm is not None:
     _MODEL_REGISTRY["gpt-oss-20b"] = gpt_oss_llm
 if deepseek_llm is not None:
     _MODEL_REGISTRY["deepseek-chat"] = deepseek_llm
+if gemini_pro_llm is not None:
+    _MODEL_REGISTRY["gemini-2.5-pro"] = gemini_pro_llm
+if gpt5_llm is not None:
+    _MODEL_REGISTRY["gpt-5"] = gpt5_llm
 
 # Aliases for convenience
 _ALIASES: Dict[str, str] = {
@@ -57,6 +75,9 @@ _ALIASES: Dict[str, str] = {
     "gpt_oss": "gpt-oss-20b",
     "gpt-oss": "gpt-oss-20b",
     "deepseek": "deepseek-chat",
+    "gemini": "gemini-2.5-pro",
+    "gemini-pro": "gemini-2.5-pro",
+    "gpt5": "gpt-5",
 }
 
 # Current model selection (starts unset)
@@ -66,10 +87,14 @@ _current_model_name: Optional[str] = None
 def _availability_flags() -> Dict[str, bool]:
     lm = bool(os.getenv("LM_STUDIO_ENDPOINT"))
     deepseek = bool(os.getenv("DEEPSEEK_API_KEY"))
+    google = bool(os.getenv("GOOGLE_API_KEY"))
+    openai = bool(os.getenv("OPENAI_API_KEY"))
     return {
         "qwen3-8b": lm,
         "gpt-oss-20b": lm,
         "deepseek-chat": deepseek,
+        "gemini-2.5-pro": google,
+        "gpt-5": openai,
     }
 
 
@@ -79,6 +104,8 @@ def get_available_models() -> Dict[str, Dict[str, object]]:
         "qwen3-8b": "Qwen 3 8B (via LM Studio/OpenAI-compatible)",
         "gpt-oss-20b": "OpenAI GPT-OSS 20B (via LM Studio/OpenAI-compatible)",
         "deepseek-chat": "DeepSeek Chat (provider=deepseek)",
+        "gemini-2.5-pro": "Gemini 2.5 Pro (provider=google)",
+        "gpt-5": "OpenAI GPT-5 (provider=openai)",
     }
     flags = _availability_flags()
     return {
