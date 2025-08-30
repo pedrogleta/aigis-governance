@@ -9,7 +9,9 @@ interface Props {
 }
 
 const ModelSidebar: React.FC<Props> = ({ open, onClose }) => {
-  const [available, setAvailable] = useState<Record<string, string>>({});
+  const [modelsMap, setModelsMap] = useState<
+    Record<string, { description: string; available: boolean }>
+  >({});
   const [current, setCurrent] = useState<string | null>(
     apiService.getSelectedModelName(),
   );
@@ -21,9 +23,9 @@ const ModelSidebar: React.FC<Props> = ({ open, onClose }) => {
     let mounted = true;
     (async () => {
       try {
-        const data = await apiService.getModels();
+  const data = await apiService.getModels();
         if (!mounted) return;
-        setAvailable(data.available || {});
+  setModelsMap(data.models || {});
         if (data.current) {
           setCurrent(data.current);
           apiService.setSelectedModelName(data.current);
@@ -93,25 +95,38 @@ const ModelSidebar: React.FC<Props> = ({ open, onClose }) => {
             {error && <div className="mb-3 text-xs text-red-400">{error}</div>}
 
             <div className="space-y-2">
-              {Object.entries(available).map(([name, desc]) => (
-                <button
-                  key={name}
-                  onClick={() => handleSelect(name)}
-                  disabled={busy}
-                  className={cn(
-                    'w-full text-left border border-gray-800 rounded p-3 hover:border-green-600 transition-colors',
-                    current === name && 'border-green-600 bg-gray-800',
-                  )}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <div className="text-sm text-white font-medium">{name}</div>
-                  <div className="text-xs text-gray-400">{desc}</div>
-                  {current === name && (
-                    <div className="text-xs text-green-400 mt-1">Selected</div>
-                  )}
-                </button>
-              ))}
-              {Object.keys(available).length === 0 && (
+              {Object.entries(modelsMap).map(([name, meta]) => {
+                const availableFlag = !!meta.available;
+                return (
+                  <button
+                    key={name}
+                    onClick={() => availableFlag && handleSelect(name)}
+                    disabled={busy || !availableFlag}
+                    className={cn(
+                      'w-full text-left border border-gray-800 rounded p-3 transition-colors',
+                      availableFlag
+                        ? 'hover:border-green-600'
+                        : 'opacity-50 cursor-not-allowed',
+                      current === name && 'border-green-600 bg-gray-800',
+                    )}
+                    style={{ cursor: availableFlag ? 'pointer' : 'not-allowed' }}
+                  >
+                    <div className="text-sm text-white font-medium flex items-center gap-2">
+                      <span>{name}</span>
+                      {!availableFlag && (
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-gray-800 text-red-400 border border-gray-700">
+                          Unavailable
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-400">{meta.description}</div>
+                    {current === name && (
+                      <div className="text-xs text-green-400 mt-1">Selected</div>
+                    )}
+                  </button>
+                );
+              })}
+                {Object.keys(modelsMap).length === 0 && (
                 <div className="text-xs text-gray-400">
                   No models discovered.
                 </div>

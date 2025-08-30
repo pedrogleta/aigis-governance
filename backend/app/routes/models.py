@@ -13,8 +13,11 @@ router = APIRouter(prefix="/models", tags=["models"])
 
 @router.get("/")
 def list_models():
-    """List available model options."""
-    return {"available": get_available_models(), "current": get_current_model_name()}
+    """List model options with availability flags."""
+    return {
+        "models": get_available_models(),
+        "current": get_current_model_name(),
+    }
 
 
 @router.post("/select")

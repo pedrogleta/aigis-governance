@@ -49,13 +49,25 @@ _ALIASES: Dict[str, str] = {
 _current_model_name: Optional[str] = None
 
 
-def get_available_models() -> Dict[str, str]:
-    """Return a mapping of canonical names to brief descriptions."""
+def _availability_flags() -> Dict[str, bool]:
+    lm = bool(os.getenv("LM_STUDIO_ENDPOINT"))
+    deepseek = bool(os.getenv("DEEPSEEK_API_KEY"))
     return {
+        "qwen3-8b": lm,
+        "gpt-oss-20b": lm,
+        "deepseek-chat": deepseek,
+    }
+
+
+def get_available_models() -> Dict[str, Dict[str, object]]:
+    """Return metadata for each supported model, including availability."""
+    desc = {
         "qwen3-8b": "Qwen 3 8B (via LM Studio/OpenAI-compatible)",
         "gpt-oss-20b": "OpenAI GPT-OSS 20B (via LM Studio/OpenAI-compatible)",
         "deepseek-chat": "DeepSeek Chat (provider=deepseek)",
     }
+    flags = _availability_flags()
+    return {k: {"description": v, "available": flags.get(k, False)} for k, v in desc.items()}
 
 
 def resolve_model_name(name: str) -> Optional[str]:

@@ -514,7 +514,7 @@ export class ApiService {
   // Models selection API
   // ---------------
   async getModels(): Promise<{
-    available: Record<string, string>;
+    models: Record<string, { description: string; available: boolean }>;
     current: string | null;
   }> {
     const resp = await fetch(`${this.baseUrl}/models`, {
@@ -523,7 +523,7 @@ export class ApiService {
     });
     if (!resp.ok) throw new Error(`Failed to list models: ${resp.status}`);
     return (await resp.json()) as {
-      available: Record<string, string>;
+      models: Record<string, { description: string; available: boolean }>;
       current: string | null;
     };
   }
@@ -531,7 +531,7 @@ export class ApiService {
   async selectModel(name: string): Promise<string> {
     const resp = await fetch(`${this.baseUrl}/models/select`, {
       method: 'POST',
-      headers: this.getAuthHeaders(),
+      headers: this.getAuthHeaders('application/json'),
       body: JSON.stringify({ name }),
     });
     if (!resp.ok) {
