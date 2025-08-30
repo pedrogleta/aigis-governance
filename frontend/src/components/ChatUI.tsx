@@ -625,16 +625,39 @@ const ChatUI: React.FC = () => {
                         : formatTimestamp(message.timestamp)}
                     </span>
                   </div>
+                  {/* Tool outputs (finalized) appear above assistant text */}
+                  {message.type === 'agent' &&
+                    message.plots &&
+                    message.plots.length > 0 && (
+                      <div className="mb-3">
+                        <div className="plot-container">
+                          <div className="flex items-center space-x-2 mb-2">
+                            <BarChart3 className="h-4 w-4 text-green-400" />
+                            <span className="text-sm font-medium text-green-400">
+                              Generated Plots
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {message.plots.map((_, index) => (
+                              <div
+                                key={index}
+                                className="bg-gray-800 rounded-lg p-4 border border-gray-700"
+                              >
+                                <div className="aspect-video bg-gray-700 rounded flex items-center justify-center">
+                                  <span className="text-gray-500 text-sm">
+                                    Plot {index + 1}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   <div className="text-gray-200 leading-relaxed prose prose-invert prose-green max-w-none">
                     {message.streamingMessages &&
                     message.streamingMessages.length > 0 ? (
                       <div className="space-y-3">
-                        {message.content && message.content !== 'Typing...' && (
-                          <StreamingTextComponent
-                            content={message.content}
-                            isStreaming={message.isStreaming || false}
-                          />
-                        )}
                         {message.streamingMessages
                           .filter((msg) => msg.type !== 'text')
                           .map((streamingMsg, index) => (
@@ -644,6 +667,12 @@ const ChatUI: React.FC = () => {
                               isStreaming={message.isStreaming}
                             />
                           ))}
+                        {message.content && message.content !== 'Typing...' && (
+                          <StreamingTextComponent
+                            content={message.content}
+                            isStreaming={message.isStreaming || false}
+                          />
+                        )}
                       </div>
                     ) : message.content === 'Typing...' ? (
                       <div className="typing-indicator">
@@ -715,33 +744,6 @@ const ChatUI: React.FC = () => {
                       </div>
                     )}
                   </div>
-
-                  {message.plots && message.plots.length > 0 && (
-                    <div className="mt-3">
-                      <div className="plot-container">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <BarChart3 className="h-4 w-4 text-green-400" />
-                          <span className="text-sm font-medium text-green-400">
-                            Generated Plots
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {message.plots.map((_, index) => (
-                            <div
-                              key={index}
-                              className="bg-gray-800 rounded-lg p-4 border border-gray-700"
-                            >
-                              <div className="aspect-video bg-gray-700 rounded flex items-center justify-center">
-                                <span className="text-gray-500 text-sm">
-                                  Plot {index + 1}
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
