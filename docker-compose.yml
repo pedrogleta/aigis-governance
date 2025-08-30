@@ -50,8 +50,15 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       MINIO_ENDPOINT: minio:9000
-      LM_STUDIO_ENDPOINT: ${LM_STUDIO_ENDPOINT:-http://0.0.0.0:1234}
       ENABLE_OPIK_TRACER: ${ENABLE_OPIK_TRACER:-0}
+      # LLM providers (configure as needed)
+      LM_STUDIO_ENDPOINT: ${LM_STUDIO_ENDPOINT:-http://0.0.0.0:1234/v1}
+      # DeepSeek API key enables deepseek-chat
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      # Google API key enables gemini-2.5-pro
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      # OpenAI API key enables gpt-5
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     volumes:
       - ./backend:/app
       # Use an anonymous volume for /app/.venv so the host .venv is not mounted into the container
