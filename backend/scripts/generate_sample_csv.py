@@ -309,10 +309,10 @@ def write_sales_csv(sales: Iterable[Sale], path: Path) -> None:
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Generate sample leads and sales CSVs")
     p.add_argument(
-        "--leads", type=int, default=2500, help="Number of lead rows (>=2000)"
+        "--leads", type=int, default=5000, help="Number of lead rows (>=2000)"
     )
     p.add_argument(
-        "--sales", type=int, default=2500, help="Number of sales rows (>=2000)"
+        "--sales", type=int, default=500, help="Number of sales rows (>=2000)"
     )
     p.add_argument(
         "--out", type=str, default=".", help="Output directory for CSV files"
