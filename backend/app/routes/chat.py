@@ -2,19 +2,21 @@ from typing import cast
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from langgraph.graph.state import RunnableConfig
 from langchain_core.messages import HumanMessage
 
 from app.helpers.langgraph import stream_langgraph_events
-from llm.agent import graph
+from llm.agent import get_graph
 from app.helpers.user_connections import get_db_schema
 from core.types import AigisState
 from app.state import active_threads
 from core.database import get_postgres_db
+from auth.utils import verify_token
 from auth.dependencies import get_current_user
+from crud.user import user_crud
 from models.user import User
 from crud.thread import thread_crud
 
@@ -46,8 +48,8 @@ async def create_thread(db: Session = Depends(get_postgres_db)):
 async def send_message(
     thread_id: str,
     message: dict,
+    request: Request,
     db: Session = Depends(get_postgres_db),
-    current_user: User = Depends(get_current_user),
 ):
     """Send a message to the AI agent, persist user message, and stream the agent response"""
     db_thread = thread_crud.get_thread_by_thread_id(db, thread_id)
@@ -78,6 +80,43 @@ async def send_message(
             "timestamp": timestamp.isoformat(),
         }
     )
+
+    # Authenticate user (after confirming thread exists to allow 404 first)
+    auth_header = request.headers.get("authorization") or request.headers.get(
+        "Authorization"
+    )
+    if not auth_header or not auth_header.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    token = auth_header.split(" ", 1)[1].strip()
+    payload = verify_token(token)
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    try:
+        sub = payload.get("sub")
+        if sub is None:
+            raise ValueError("missing sub")
+        user_id = int(sub)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    current_user = user_crud.get_user_by_id(db, user_id=user_id)
+    if current_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     # Prepare the input for the agent
     thread_config = cast(RunnableConfig, {"configurable": {"thread_id": thread_id}})
@@ -143,7 +182,10 @@ async def get_thread_state(thread_id: str):
         # Get the current state from the graph's checkpointer
         thread_config = cast(RunnableConfig, {"configurable": {"thread_id": thread_id}})
 
-        state = graph.get_state(thread_config)
+        graph_runner = get_graph()
+        if graph_runner is None:
+            raise HTTPException(status_code=500, detail="Model/graph not initialized")
+        state = graph_runner.get_state(thread_config)
         db_schema = state.values.get("db_schema", "")
         connection = state.values.get("connection")
 
@@ -203,7 +245,10 @@ async def update_thread_connection(
 
     try:
         # Update the checkpointer state with both connection and db_schema
-        graph.update_state(
+        graph_runner = get_graph()
+        if graph_runner is None:
+            raise HTTPException(status_code=500, detail="Model/graph not initialized")
+        graph_runner.update_state(
             thread_config,
             {
                 "connection": connection_ref,
@@ -217,5 +262,8 @@ async def update_thread_connection(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update state: {str(e)}")
-    current_state = graph.get_state(thread_config)
+    graph_runner = get_graph()
+    if graph_runner is None:
+        raise HTTPException(status_code=500, detail="Model/graph not initialized")
+    current_state = graph_runner.get_state(thread_config)
     return {"graph_state": current_state}

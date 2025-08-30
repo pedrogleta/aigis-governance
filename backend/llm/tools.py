@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Annotated
+from typing import Any, List, Optional, Annotated
 import json
 from sqlalchemy import text
 from app.helpers.user_connections import execute_query
@@ -12,6 +12,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import SystemMessage, ToolMessage
 from langgraph.types import Command
 from llm.prompts import ask_analyst_prompt, json_fixer_prompt, ask_database_prompt
+from llm.model import get_current_llm
 
 
 def make_ask_database(model: Optional[BaseChatModel] = None):
@@ -112,18 +113,15 @@ def make_ask_analyst(model: Optional[BaseChatModel] = None):
     return ask_analyst
 
 
-def create_tools(models: Optional[Dict[str, Any]] = None) -> List[Any]:
-    """Create the list of tools using the provided models registry.
+def create_tools(model: Optional[BaseChatModel] = None) -> List[Any]:
+    """Create tool instances bound to the provided or current global LLM.
 
-    Pass in whatever models you want tools to use, e.g. {"qwen": qwen_llm}.
-    This avoids importing models here and prevents circular imports.
+    If no model is provided, the globally selected model will be used. If none is
+    selected, the tools will gracefully report an internal configuration error
+    when called.
     """
-    models = models or {}
-    qwen = models.get("qwen")
-    deepseek = models.get("deepseek")
-    gpt_oss = models.get("gpt_oss")
-    # You can choose which model powers which tool; adjust as needed.
+    bound_model = model or get_current_llm()
     return [
-        make_ask_database(gpt_oss),
-        make_ask_analyst(gpt_oss),
+        make_ask_database(bound_model),
+        make_ask_analyst(bound_model),
     ]
