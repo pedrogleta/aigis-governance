@@ -2,6 +2,72 @@
 
 An AI data assistant you can connect to your own databases. Ask questions in natural language; the system writes SQL, executes it against your selected connection, and returns answers with optional Vega‑Lite visualizations. A modern React chat UI streams responses from a FastAPI backend powered by LangGraph.
 
+## Quickstart
+
+### Option A: Docker Compose (recommended)
+
+Prereqs: Docker + Docker Compose
+
+0) Configure environment variables
+
+- Copy the template to a real environment file at the repo root and edit as needed:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+- You must set at least one LLM provider so the app can answer questions. Any of the following works:
+   - LM Studio (OpenAI compatible): set `LM_STUDIO_ENDPOINT` (e.g., `http://host.docker.internal:1234/v1`)
+   - DeepSeek: set `DEEPSEEK_API_KEY`
+   - Google: set `GOOGLE_API_KEY`
+   - OpenAI: set `OPENAI_API_KEY`
+
+- Also set secrets for auth and encryption (see `.env.example`):
+   - `SECRET_KEY`, `MASTER_ENCRYPTION_KEY`
+
+1) From repo root, start services:
+
+```bash
+docker compose up --build
+```
+
+2) Open:
+- Frontend (production build via Nginx): http://localhost:3000
+- Backend API: http://localhost:8000
+
+Notes
+- The backend container runs Alembic migrations automatically at startup.
+- You can customize defaults via `.env` or environment variables in `docker-compose.yml`.
+
+### Option B: Local development
+
+Backend
+```bash
+cd backend
+uv venv && uv sync
+# create .env with at least:
+#   SECRET_KEY=change-me
+#   MASTER_ENCRYPTION_KEY=change-me
+#   POSTGRES_HOST=localhost
+#   POSTGRES_USER=postgres
+#   POSTGRES_PASSWORD=postgres
+#   POSTGRES_DB=aigis_governance
+# optional model providers:
+#   LM_STUDIO_ENDPOINT=http://0.0.0.0:1234/v1
+#   DEEPSEEK_API_KEY=your-deepseek-key
+#   GOOGLE_API_KEY=your-google-key
+#   OPENAI_API_KEY=your-openai-key
+uv run alembic upgrade head
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
 ## Highlights
 
 - Chat with your data using natural language
@@ -66,31 +132,16 @@ Code map (selected):
 - Backend streams tokens as `chunk` events and tool outputs as `tool_result`
 - Frontend renders markdown and charts (via react‑vega)
 
-## Quickstart
-
-### Option A: Docker Compose
-
-Prereqs: Docker + Docker Compose
-
-1) From repo root:
-```bash
-docker compose up --build
-```
-
-2) Open:
-- Backend API: http://localhost:8000
-- Frontend (Vite dev server): http://localhost:3000
+## Environment
 
 Environment used by Compose (defaults shown in `docker-compose.yml`):
 - `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
-- `LM_STUDIO_ENDPOINT` (default `http://0.0.0.0:1234`)
+- `LM_STUDIO_ENDPOINT` (default `http://0.0.0.0:1234/v1`)
  - `DEEPSEEK_API_KEY` (optional; enables DeepSeek provider)
  - `GOOGLE_API_KEY` (optional; enables Gemini models)
  - `OPENAI_API_KEY` (optional; enables OpenAI models)
 - `ENABLE_OPIK_TRACER` (0/1)
 - For secure password storage in connections, set in backend container env or `.env` in `backend/`: `MASTER_ENCRYPTION_KEY` and `SECRET_KEY`
-
-The backend container runs Alembic migrations automatically at startup.
 
 ### Option B: Local development
 
