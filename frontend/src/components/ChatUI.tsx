@@ -524,14 +524,30 @@ const ChatUI: React.FC = () => {
                 )}
               ></div>
               <button
-                onClick={() => setConnectionsOpen(true)}
+                onClick={() =>
+                  apiService.getSelectedModelName() && setConnectionsOpen(true)
+                }
                 aria-expanded={connectionsOpen}
                 aria-controls="connections-sidebar"
-                className="text-sm px-4 py-2 rounded bg-gray-800 text-white hover:bg-gray-700 transition-colors flex items-center focus:outline-none focus:ring-2 focus:ring-green-500 cursor-pointer"
-                title="Manage connections"
+                disabled={!apiService.getSelectedModelName()}
+                className={cn(
+                  'text-sm px-4 py-2 rounded transition-colors flex items-center focus:outline-none',
+                  apiService.getSelectedModelName()
+                    ? 'bg-gray-800 text-white hover:bg-gray-700 focus:ring-2 focus:ring-green-500 cursor-pointer'
+                    : 'bg-gray-800 text-gray-400 opacity-60 cursor-not-allowed',
+                )}
+                title={
+                  apiService.getSelectedModelName()
+                    ? 'Manage connections'
+                    : 'Select a model first'
+                }
                 role="button"
               >
-                {getConnectionStatusText()}
+                {apiService.getSelectedModelName() ? (
+                  getConnectionStatusText()
+                ) : (
+                  <span className="text-red-200">Select a model first</span>
+                )}
               </button>
             </div>
             <button
