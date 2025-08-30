@@ -66,7 +66,7 @@ def make_ask_database(model: Optional[BaseChatModel] = None):
             update={
                 "messages": [
                     ToolMessage(
-                        f"Executed query successfully!\n Query:{sql_query}\n Result: {sql_execution_result}",
+                        f"Executed query successfully!\n Query: {sql_query}\n Result: {sql_execution_result}",
                         tool_call_id=tool_call_id,
                     )
                 ],
