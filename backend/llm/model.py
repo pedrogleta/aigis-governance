@@ -7,35 +7,49 @@ from langchain_core.language_models import BaseChatModel
 
 load_dotenv(override=True)
 
-# Initialize available model clients (not bound to tools here)
-qwen_llm = init_chat_model(
-    "qwen/qwen3-8b",
-    temperature=0,
-    model_provider="openai",
-    base_url=os.getenv("LM_STUDIO_ENDPOINT", "http://0.0.0.0:1234/v1"),
-    api_key="not-needed",
-    stream_usage=True,
-)
+# Initialize available model clients (not bound to tools here) only when env allows
+_lm_studio_endpoint = os.getenv("LM_STUDIO_ENDPOINT")
+_deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
 
-gpt_oss_llm = init_chat_model(
-    "openai/gpt-oss-20b",
-    temperature=0,
-    model_provider="openai",
-    base_url=os.getenv("LM_STUDIO_ENDPOINT", "http://0.0.0.0:1234/v1"),
-    api_key="not-needed",
-    stream_usage=True,
-)
+qwen_llm: Optional[BaseChatModel] = None
+gpt_oss_llm: Optional[BaseChatModel] = None
+deepseek_llm: Optional[BaseChatModel] = None
 
-deepseek_llm = init_chat_model(
-    "deepseek-chat", model_provider="deepseek", stream_usage=True, temperature=0
-)
+if _lm_studio_endpoint:
+    qwen_llm = init_chat_model(
+        "qwen/qwen3-8b",
+        temperature=0,
+        model_provider="openai",
+        base_url=_lm_studio_endpoint,
+        api_key="not-needed",
+        stream_usage=True,
+    )
+
+    gpt_oss_llm = init_chat_model(
+        "openai/gpt-oss-20b",
+        temperature=0,
+        model_provider="openai",
+        base_url=_lm_studio_endpoint,
+        api_key="not-needed",
+        stream_usage=True,
+    )
+
+if _deepseek_api_key:
+    deepseek_llm = init_chat_model(
+        "deepseek-chat",
+        model_provider="deepseek",
+        stream_usage=True,
+        temperature=0,
+    )
 
 # Canonical registry of available models
-_MODEL_REGISTRY: Dict[str, BaseChatModel] = {
-    "qwen3-8b": qwen_llm,
-    "gpt-oss-20b": gpt_oss_llm,
-    "deepseek-chat": deepseek_llm,
-}
+_MODEL_REGISTRY: Dict[str, BaseChatModel] = {}
+if qwen_llm is not None:
+    _MODEL_REGISTRY["qwen3-8b"] = qwen_llm
+if gpt_oss_llm is not None:
+    _MODEL_REGISTRY["gpt-oss-20b"] = gpt_oss_llm
+if deepseek_llm is not None:
+    _MODEL_REGISTRY["deepseek-chat"] = deepseek_llm
 
 # Aliases for convenience
 _ALIASES: Dict[str, str] = {
@@ -85,7 +99,7 @@ def set_current_model(name: str) -> None:
     canonical = resolve_model_name(name)
     if not canonical or canonical not in _MODEL_REGISTRY:
         raise ValueError(
-            f"Unknown model '{name}'. Available: {list(_MODEL_REGISTRY.keys())}"
+            f"Unknown or unavailable model '{name}'. Available now: {list(_MODEL_REGISTRY.keys())}"
         )
     _current_model_name = canonical
 
