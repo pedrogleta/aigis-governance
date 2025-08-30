@@ -80,13 +80,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
-    environment:
-      # make vite listen on all interfaces so host machine can connect
-      HOST: 0.0.0.0
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      - "3000:80"
     depends_on:
       backend:
         condition: service_healthy
