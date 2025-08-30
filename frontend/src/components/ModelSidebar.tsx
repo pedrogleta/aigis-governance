@@ -12,9 +12,7 @@ const ModelSidebar: React.FC<Props> = ({ open, onClose }) => {
   const [modelsMap, setModelsMap] = useState<
     Record<string, { description: string; available: boolean }>
   >({});
-  const [current, setCurrent] = useState<string | null>(
-    apiService.getSelectedModelName(),
-  );
+  const [current, setCurrent] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,10 +24,7 @@ const ModelSidebar: React.FC<Props> = ({ open, onClose }) => {
         const data = await apiService.getModels();
         if (!mounted) return;
         setModelsMap(data.models || {});
-        if (data.current) {
-          setCurrent(data.current);
-          apiService.setSelectedModelName(data.current);
-        }
+        if (data.current) setCurrent(data.current);
       } catch (e) {
         setError((e as Error).message);
       }

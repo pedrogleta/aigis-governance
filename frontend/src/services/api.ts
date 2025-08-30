@@ -85,10 +85,7 @@ export class ApiService {
       if (stored) this.token = stored;
       const userJson = localStorage.getItem('aigis_user');
       if (userJson) this.currentUser = JSON.parse(userJson);
-      const connJson = localStorage.getItem('aigis_selected_connection');
-      if (connJson) this.selectedConnection = JSON.parse(connJson);
-      const modelName = localStorage.getItem('aigis_selected_model');
-      if (modelName) (this as any)._selectedModelName = modelName;
+      // Do not restore selected connection or model from localStorage
     } catch (e) {
       console.warn('Failed to load auth from localStorage', e);
     }
@@ -121,8 +118,7 @@ export class ApiService {
     try {
       localStorage.removeItem('aigis_token');
       localStorage.removeItem('aigis_user');
-      localStorage.removeItem('aigis_selected_connection');
-      // do not clear selected model automatically
+      // We do not persist connection/model selection anymore
     } catch (e) {
       console.warn('Failed to clear auth from localStorage', e);
     }
@@ -450,13 +446,7 @@ export class ApiService {
 
   setSelectedConnection(conn: UserConnection | null) {
     this.selectedConnection = conn;
-    try {
-      if (conn)
-        localStorage.setItem('aigis_selected_connection', JSON.stringify(conn));
-      else localStorage.removeItem('aigis_selected_connection');
-    } catch (e) {
-      console.warn('Failed to persist selected connection', e);
-    }
+    // no persistence
   }
 
   // Multi-selection helpers (custom connections only)
@@ -540,9 +530,6 @@ export class ApiService {
     }
     const data = (await resp.json()) as { current?: string };
     const current = data.current || name;
-    try {
-      localStorage.setItem('aigis_selected_model', current);
-    } catch {}
     (this as any)._selectedModelName = current;
     return current;
   }
@@ -552,10 +539,7 @@ export class ApiService {
   }
   setSelectedModelName(name: string | null) {
     (this as any)._selectedModelName = name || undefined;
-    try {
-      if (name) localStorage.setItem('aigis_selected_model', name);
-      else localStorage.removeItem('aigis_selected_model');
-    } catch {}
+    // no persistence
   }
 }
 
