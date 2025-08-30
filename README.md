@@ -10,6 +10,7 @@ An AI data assistant you can connect to your own databases. Ask questions in nat
 - Authentication and per‑user database connections (Postgres/SQLite now; extensible)
 - Postgres for app data (users, threads, user connections)
 - Simple local OSS model setup via LM Studio or bring your own provider
+ - Per‑thread LLM model selection (each chat thread can choose its own model)
 
 ## Architecture at a glance
 
@@ -18,6 +19,7 @@ An AI data assistant you can connect to your own databases. Ask questions in nat
    - Chat threads + Server‑Sent Events streaming
    - LangGraph agent with tools defined in code
    - Postgres as the primary database; dynamic engines to user‑provided DBs
+   - Per‑thread model selection APIs
 - Frontend (React + Vite + Tailwind):
    - Chat UI with live streaming
    - Manage and select your DB connections
@@ -30,6 +32,7 @@ Code map (selected):
    - `backend/app/main.py` – FastAPI app, CORS, routers, `/health`
    - `backend/app/routes/auth.py` – register/login/me, profile, admin users
    - `backend/app/routes/chat.py` – create thread, send message (SSE), thread state
+   - Per‑thread model APIs: `GET /chat/{thread_id}/model`, `POST /chat/{thread_id}/model`
    - `backend/app/routes/connections.py` – per‑user DB connections CRUD + `/test`
    - `backend/app/helpers/langgraph.py` – SSE streaming adapter
    - `backend/app/helpers/user_connections.py` – build db schema markdown, run SQL
@@ -42,6 +45,7 @@ Code map (selected):
 - Frontend
    - `frontend/src/services/api.ts` – threads, SSE, auth, connections API
    - `frontend/src/components/ChatUI.tsx` – chat flow and streaming rendering
+   - `frontend/src/components/ModelSidebar.tsx` – per‑thread model selection UI
    - `frontend/src/components/MessageComponents.tsx` – text/tool/plot renderers
    - `frontend/src/pages/*` – Login, Register, Chat
 
@@ -80,6 +84,7 @@ docker compose up --build
 Environment used by Compose (defaults shown in `docker-compose.yml`):
 - `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
 - `LM_STUDIO_ENDPOINT` (default `http://0.0.0.0:1234`)
+ - `DEEPSEEK_API_KEY` (optional; enables DeepSeek provider)
 - `ENABLE_OPIK_TRACER` (0/1)
 - For secure password storage in connections, set in backend container env or `.env` in `backend/`: `MASTER_ENCRYPTION_KEY` and `SECRET_KEY`
 
@@ -98,7 +103,9 @@ uv venv && uv sync
 #   POSTGRES_USER=postgres
 #   POSTGRES_PASSWORD=postgres
 #   POSTGRES_DB=aigis_governance
-# optional: LM_STUDIO_ENDPOINT=http://0.0.0.0:1234/v1
+# optional model providers:
+#   LM_STUDIO_ENDPOINT=http://0.0.0.0:1234/v1
+#   DEEPSEEK_API_KEY=your-key
 uv run alembic upgrade head
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
@@ -129,22 +136,29 @@ Chat (`/chat`)
 - `GET /{thread_id}` – persisted messages
 - `GET /{thread_id}/state` – graph state snapshot (e.g., `db_schema`)
 - `POST /{thread_id}/connection` – set active user_connection for this thread
+- `GET /{thread_id}/model` – get the current model for this thread and availability map
+- `POST /{thread_id}/model` – set the model for this thread; body `{ name: "qwen3-8b" | "gpt-oss-20b" | "deepseek-chat" }` (aliases like `qwen`, `gpt_oss`, `deepseek` accepted)
 
 Health
 - `GET /health` – server and Postgres connectivity
 
 ## Models and providers
 
-Defined in `backend/llm/model.py` using LangChain’s `init_chat_model`:
-- OSS defaults via LM Studio: `openai/gpt-oss-20b`, `qwen/qwen3-8b`
-- Optional: `deepseek-chat`
+Supported models are initialized in `backend/llm/model.py` using LangChain’s `init_chat_model`:
+- OSS via LM Studio: `openai/gpt-oss-20b`, `qwen/qwen3-8b` (enable by setting `LM_STUDIO_ENDPOINT`)
+- DeepSeek: `deepseek-chat` (enable by setting `DEEPSEEK_API_KEY`)
 
-Configure `LM_STUDIO_ENDPOINT` to your local server (e.g. http://localhost:1234/v1). Tools are bound to the model and exposed to LangGraph; see `backend/llm/tools.py`.
+Selection is per‑thread: each chat thread can choose its own model via the UI (Model button near the header) or APIs listed above. Availability is derived from environment variables and returned in the `GET /chat/{thread_id}/model` response.
+
+Notes:
+- A thread starts with no model selected; the UI shows a red “No model selected” indicator until you pick one.
+- Tools and the assistant resolve the model per‑thread at runtime. If no model is set, the assistant will return an error prompting you to select one.
+- Aliases are accepted for convenience: `qwen` → `qwen3-8b`, `gpt_oss`/`gpt-oss` → `gpt-oss-20b`, `deepseek` → `deepseek-chat`.
 
 ## Agent and tools
 
 - Graph: `backend/llm/agent.py` (LangGraph with in‑memory checkpointer)
-- State: `AigisState` includes `messages`, `db_schema`, `connection`, `sql_result`
+- State: `AigisState` includes `messages`, `model_name`, `db_schema`, `connection`, `sql_result`
 - Tools:
    - `ask_database(query)` – LLM→SQL, executes via SQLAlchemy, returns rows/count
    - `ask_analyst(query)` – returns `{ type: "vega_lite_spec", spec: <JSON> }`
