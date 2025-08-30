@@ -12,6 +12,7 @@ import {
   StreamingTextComponent,
 } from './MessageComponents';
 import ConnectionsSidebar from './ConnectionsSidebar';
+import ModelSidebar from './ModelSidebar';
 
 interface Message {
   id: string;
@@ -45,6 +46,7 @@ const ChatUI: React.FC = () => {
     'connected' | 'disconnected' | 'checking'
   >('checking');
   const [connectionsOpen, setConnectionsOpen] = useState(false);
+  const [modelsOpen, setModelsOpen] = useState(false);
   const [connections, setConnections] = useState<UserConnection[]>([]);
   const [selectedConnection, setSelectedConnection] =
     useState<UserConnection | null>(apiService.getSelectedConnection());
@@ -484,6 +486,21 @@ const ChatUI: React.FC = () => {
             <p className="text-sm text-gray-400">AI Data Science Assistant</p>
           </div>
           <div className="ml-auto flex items-center space-x-2 text-sm text-gray-400">
+            {/* Model selector button (left of connections button) */}
+            <div className="flex items-center">
+              <button
+                onClick={() => setModelsOpen(true)}
+                aria-expanded={modelsOpen}
+                aria-controls="models-sidebar"
+                className="text-sm px-4 py-2 rounded bg-gray-800 text-white hover:bg-gray-700 transition-colors flex items-center focus:outline-none focus:ring-2 focus:ring-green-500 cursor-pointer mr-2"
+                title="Select LLM model"
+                role="button"
+              >
+                <span className="truncate">
+                  {apiService.getSelectedModelName() || 'Choose a model'}
+                </span>
+              </button>
+            </div>
             <div className="flex items-center space-x-2">
               <div
                 className={cn(
@@ -779,6 +796,8 @@ const ChatUI: React.FC = () => {
         onTest={handleTest}
         onRefresh={refreshConnections}
       />
+      {/* Models sidebar */}
+      <ModelSidebar open={modelsOpen} onClose={() => setModelsOpen(false)} />
     </div>
   );
 };

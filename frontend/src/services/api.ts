@@ -87,6 +87,8 @@ export class ApiService {
       if (userJson) this.currentUser = JSON.parse(userJson);
       const connJson = localStorage.getItem('aigis_selected_connection');
       if (connJson) this.selectedConnection = JSON.parse(connJson);
+      const modelName = localStorage.getItem('aigis_selected_model');
+      if (modelName) (this as any)._selectedModelName = modelName;
     } catch (e) {
       console.warn('Failed to load auth from localStorage', e);
     }
@@ -120,6 +122,7 @@ export class ApiService {
       localStorage.removeItem('aigis_token');
       localStorage.removeItem('aigis_user');
       localStorage.removeItem('aigis_selected_connection');
+      // do not clear selected model automatically
     } catch (e) {
       console.warn('Failed to clear auth from localStorage', e);
     }
@@ -505,6 +508,54 @@ export class ApiService {
       throw new Error(text || `CSV import failed: ${resp.status}`);
     }
     return (await resp.json()) as UserConnection;
+  }
+
+  // ---------------
+  // Models selection API
+  // ---------------
+  async getModels(): Promise<{
+    available: Record<string, string>;
+    current: string | null;
+  }> {
+    const resp = await fetch(`${this.baseUrl}/models`, {
+      method: 'GET',
+      headers: this.getAuthHeaders(),
+    });
+    if (!resp.ok) throw new Error(`Failed to list models: ${resp.status}`);
+    return (await resp.json()) as {
+      available: Record<string, string>;
+      current: string | null;
+    };
+  }
+
+  async selectModel(name: string): Promise<string> {
+    const resp = await fetch(`${this.baseUrl}/models/select`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ name }),
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(text || `Failed to select model: ${resp.status}`);
+    }
+    const data = (await resp.json()) as { current?: string };
+    const current = data.current || name;
+    try {
+      localStorage.setItem('aigis_selected_model', current);
+    } catch {}
+    (this as any)._selectedModelName = current;
+    return current;
+  }
+
+  getSelectedModelName(): string | null {
+    return (this as any)._selectedModelName || null;
+  }
+  setSelectedModelName(name: string | null) {
+    (this as any)._selectedModelName = name || undefined;
+    try {
+      if (name) localStorage.setItem('aigis_selected_model', name);
+      else localStorage.removeItem('aigis_selected_model');
+    } catch {}
   }
 }
 
