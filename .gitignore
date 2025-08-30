@@ -149,7 +149,9 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# Ignore all CSV files except those in /samples
 *.csv
+!samples/*.csv
 
 credentials.json
 
