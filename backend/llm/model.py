@@ -67,7 +67,9 @@ def get_available_models() -> Dict[str, Dict[str, object]]:
         "deepseek-chat": "DeepSeek Chat (provider=deepseek)",
     }
     flags = _availability_flags()
-    return {k: {"description": v, "available": flags.get(k, False)} for k, v in desc.items()}
+    return {
+        k: {"description": v, "available": flags.get(k, False)} for k, v in desc.items()
+    }
 
 
 def resolve_model_name(name: str) -> Optional[str]:

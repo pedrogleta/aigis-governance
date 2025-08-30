@@ -23,9 +23,9 @@ const ModelSidebar: React.FC<Props> = ({ open, onClose }) => {
     let mounted = true;
     (async () => {
       try {
-  const data = await apiService.getModels();
+        const data = await apiService.getModels();
         if (!mounted) return;
-  setModelsMap(data.models || {});
+        setModelsMap(data.models || {});
         if (data.current) {
           setCurrent(data.current);
           apiService.setSelectedModelName(data.current);
@@ -109,7 +109,9 @@ const ModelSidebar: React.FC<Props> = ({ open, onClose }) => {
                         : 'opacity-50 cursor-not-allowed',
                       current === name && 'border-green-600 bg-gray-800',
                     )}
-                    style={{ cursor: availableFlag ? 'pointer' : 'not-allowed' }}
+                    style={{
+                      cursor: availableFlag ? 'pointer' : 'not-allowed',
+                    }}
                   >
                     <div className="text-sm text-white font-medium flex items-center gap-2">
                       <span>{name}</span>
@@ -119,14 +121,18 @@ const ModelSidebar: React.FC<Props> = ({ open, onClose }) => {
                         </span>
                       )}
                     </div>
-                    <div className="text-xs text-gray-400">{meta.description}</div>
+                    <div className="text-xs text-gray-400">
+                      {meta.description}
+                    </div>
                     {current === name && (
-                      <div className="text-xs text-green-400 mt-1">Selected</div>
+                      <div className="text-xs text-green-400 mt-1">
+                        Selected
+                      </div>
                     )}
                   </button>
                 );
               })}
-                {Object.keys(modelsMap).length === 0 && (
+              {Object.keys(modelsMap).length === 0 && (
                 <div className="text-xs text-gray-400">
                   No models discovered.
                 </div>

@@ -498,7 +498,11 @@ const ChatUI: React.FC = () => {
                     ? 'bg-gray-800 text-white hover:bg-gray-700 focus:ring-2 focus:ring-green-500'
                     : 'bg-red-900/60 text-red-200 hover:bg-red-900/70 focus:ring-2 focus:ring-red-500 border border-red-800',
                 )}
-                title={apiService.getSelectedModelName() ? 'Select LLM model' : 'No model selected — click to choose one'}
+                title={
+                  apiService.getSelectedModelName()
+                    ? 'Select LLM model'
+                    : 'No model selected — click to choose one'
+                }
                 role="button"
               >
                 <span className="truncate">
