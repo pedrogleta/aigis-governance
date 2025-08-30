@@ -22,15 +22,12 @@ RUN pip install --no-cache-dir uv \
 # Copy application code
 COPY . /app
 
-# Install entrypoint script to a stable path not affected by bind mounts
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
-
 # Expose port
 EXPOSE 8000
 
-# Use an entrypoint that runs migrations first, then starts the app
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+# Run Alembic migrations on container start, then execute the provided command
+# Always run the final command inside the uv-managed environment (unless it already uses `uv`)
+ENTRYPOINT ["sh", "-c", "uv run alembic upgrade head \u0026\u0026 if [ \"$1\" = \"uv\" ]; then shift; exec uv \"$@\"; else exec uv run \"$@\"; fi", "--"]
 
-# Default CMD can be overridden by docker-compose or `docker run`
-CMD ["uv", "run", "-m", "app.main"]
+# Default command (can be overridden by docker-compose or `docker run`)
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
