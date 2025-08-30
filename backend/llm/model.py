@@ -48,7 +48,9 @@ if _deepseek_api_key:
 
 if _google_api_key:
     gemini_pro_llm = init_chat_model(
-        "gemini-2.5-pro", model_provider="google", stream_usage=True, temperature=0
+        "gemini-2.5-pro",
+        model_provider="google_genai",
+        temperature=0,
     )
 
 if _openai_api_key:
