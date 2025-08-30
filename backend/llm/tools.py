@@ -56,7 +56,7 @@ def make_ask_database(model: Optional[BaseChatModel] = None):
                 update={
                     "messages": [
                         ToolMessage(
-                            f"Query failed to execute. Error: {str(error)}",
+                            f"Query failed to execute.\n Query: {sql_query}\n Error: {str(error)}",
                             tool_call_id=tool_call_id,
                         )
                     ]
