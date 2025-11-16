@@ -235,6 +235,18 @@ def get_db_schema(
 
 def execute_query(connection: dict, sql_query: str):
     try:
+        import re
+
+        if re.search(
+            r"(?i)\b(update|delete|drop|insert|create|alter|truncate|merge)\b",
+            sql_query,
+        ):
+            return (
+                None,
+                ValueError(
+                    "Only SELECT statements are allowed. Detected forbidden SQL operation."
+                ),
+            )
 
         def _json_default(o):
             # Handle common non-JSON-serializable DB types
